@@ -25,11 +25,7 @@ class BaseApiTestCase(TestCase):
 
     def build_operation(self, **kwargs) -> BaseOperation:
         user = None
-        if 'user' in kwargs:
-            user = kwargs['user']
-        else:
-            user = User(owner=True)
-
+        user = kwargs['user'] if 'user' in kwargs else User(owner=True)
         return BaseOperation(
             action=kwargs.get('action'),
             meta=kwargs.get('meta', {}),
@@ -158,7 +154,9 @@ class BaseApiTestCase(TestCase):
         models = response[self.model_class_name_plural]
         for model in models:
             match = find(
-                lambda m: all([m[field] == model[field] for field in model_fields_to_check]),
+                lambda m: all(
+                    m[field] == model[field] for field in model_fields_to_check
+                ),
                 models,
             )
             self.assertEqual(match, model)

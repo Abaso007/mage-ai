@@ -87,12 +87,12 @@ class VariableTest(DBTestCase):
                 count=100,
                 count_distinct=50,
             ),
-            insights=dict(),
+            insights={},
             suggestions=[
                 dict(
                     title='Remove outliers',
                 )
-            ]
+            ],
         )
         variable.write_data(data)
         self.assertEqual(variable.read_data(), data)

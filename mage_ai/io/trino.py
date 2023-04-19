@@ -29,9 +29,11 @@ class Cursor(CursorParent):
 class ConnectionWrapper(Connection):
     def cursor(self, legacy_primitive_types: bool = None):
         """Return a new :py:class:`Cursor` object using the connection."""
-        if self.isolation_level != IsolationLevel.AUTOCOMMIT:
-            if self.transaction is None:
-                self.start_transaction()
+        if (
+            self.isolation_level != IsolationLevel.AUTOCOMMIT
+            and self.transaction is None
+        ):
+            self.start_transaction()
         if self.transaction is not None:
             request = self.transaction.request
         else:
@@ -111,10 +113,7 @@ class Trino(BaseSQL):
         table_name: str,
         unique_constraints: List[str] = [],
     ):
-        query = []
-        for cname in dtypes:
-            query.append(f'"{clean_name(cname)}" {dtypes[cname]}')
-
+        query = [f'"{clean_name(cname)}" {dtypes[cname]}' for cname in dtypes]
         full_table_name = '.'.join(list(filter(lambda x: x, [
             schema_name,
             table_name,

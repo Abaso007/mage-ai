@@ -12,7 +12,7 @@ import urllib.parse
 class BlockResource(GenericResource):
     @classmethod
     @safe_db_query
-    def create(self, payload, user, **kwargs):
+    def create(cls, payload, user, **kwargs):
         pipeline = kwargs.get('parent_model')
 
         block = Block.create(
@@ -29,18 +29,17 @@ class BlockResource(GenericResource):
             upstream_block_uuids=payload.get('upstream_blocks', []),
         )
 
-        content = payload.get('content')
-        if content:
+        if content := payload.get('content'):
             if payload.get('converted_from'):
                 content = convert_to_block(block, content)
 
             block.update_content(content)
 
-        return self(block, user, **kwargs)
+        return cls(block, user, **kwargs)
 
     @classmethod
     @safe_db_query
-    def member(self, pk, user, **kwargs):
+    def member(cls, pk, user, **kwargs):
         error = ApiError.RESOURCE_INVALID.copy()
 
         query = kwargs.get('query', {})
@@ -48,19 +47,17 @@ class BlockResource(GenericResource):
         if extension_uuid:
             extension_uuid = extension_uuid[0]
 
-        pipeline = kwargs.get('parent_model')
-        if pipeline:
+        if pipeline := kwargs.get('parent_model'):
             block = pipeline.get_block(pk, extension_uuid=extension_uuid)
             if block:
-                return self(block, user, **kwargs)
-            else:
-                if extension_uuid:
-                    message = f'Block {pk} does not exist in pipeline {pipeline.uuid} ' \
-                        f'for extension {extension_uuid}.'
-                else:
-                    message = f'Block {pk} does not exist in pipeline {pipeline.uuid}.'
-                error.update(message=message)
-                raise ApiError(error)
+                return cls(block, user, **kwargs)
+            message = (
+                f'Block {pk} does not exist in pipeline {pipeline.uuid} for extension {extension_uuid}.'
+                if extension_uuid
+                else f'Block {pk} does not exist in pipeline {pipeline.uuid}.'
+            )
+            error.update(message=message)
+            raise ApiError(error)
 
         block_type_and_uuid = urllib.parse.unquote(pk)
         parts = block_type_and_uuid.split('/')
@@ -94,7 +91,7 @@ class BlockResource(GenericResource):
             error.update(ApiError.RESOURCE_NOT_FOUND)
             raise ApiError(error)
 
-        return self(block, user, **kwargs)
+        return cls(block, user, **kwargs)
 
     @safe_db_query
     def delete(self, **kwargs):

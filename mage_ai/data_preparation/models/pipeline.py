@@ -115,7 +115,7 @@ class Pipeline:
         return f'v{self.version}'
 
     @classmethod
-    def create(self, name, pipeline_type=PipelineType.PYTHON, repo_path=None):
+    def create(cls, name, pipeline_type=PipelineType.PYTHON, repo_path=None):
         """
         1. Create a new folder for pipeline
         2. Create a new yaml file to store pipeline config
@@ -134,11 +134,10 @@ class Pipeline:
                 uuid=uuid,
                 type=format_enum(pipeline_type or PipelineType.PYTHON),
             ), fp)
-        pipeline = Pipeline(
+        return Pipeline(
             uuid,
             repo_path=repo_path,
         )
-        return pipeline
 
     @classmethod
     def duplicate(
@@ -183,9 +182,9 @@ class Pipeline:
         )
 
     @classmethod
-    def get(self, uuid, repo_path: str = None, check_if_exists: bool = False):
+    def get(cls, uuid, repo_path: str = None, check_if_exists: bool = False):
         from mage_ai.data_preparation.models.pipelines.integration_pipeline \
-            import IntegrationPipeline
+                import IntegrationPipeline
 
         if check_if_exists and not os.path.exists(
             os.path.join(
@@ -196,16 +195,16 @@ class Pipeline:
         ):
             return None
 
-        pipeline = self(uuid, repo_path=repo_path)
+        pipeline = cls(uuid, repo_path=repo_path)
         if PipelineType.INTEGRATION == pipeline.type:
             pipeline = IntegrationPipeline(uuid, repo_path=repo_path)
 
         return pipeline
 
     @classmethod
-    async def get_async(self, uuid, repo_path: str = None):
+    async def get_async(cls, uuid, repo_path: str = None):
         from mage_ai.data_preparation.models.pipelines.integration_pipeline \
-            import IntegrationPipeline
+                import IntegrationPipeline
         repo_path = repo_path or get_repo_path()
         config_path = os.path.join(
             repo_path,
@@ -219,33 +218,31 @@ class Pipeline:
         async with aiofiles.open(config_path, mode='r') as f:
             config = yaml.safe_load(await f.read()) or {}
 
-        if PipelineType.INTEGRATION == config.get('type'):
-            catalog = None
-            catalog_config_path = os.path.join(
-                repo_path,
-                PIPELINES_FOLDER,
-                uuid,
-                DATA_INTEGRATION_CATALOG_FILE,
-            )
-            if os.path.exists(catalog_config_path):
-                async with aiofiles.open(catalog_config_path, mode='r') as f:
-                    try:
-                        catalog = json.loads(await f.read())
-                    except Exception as err:
-                        catalog = {}
-                        print(err)
-            pipeline = IntegrationPipeline(
-                uuid,
-                catalog=catalog,
-                config=config,
-                repo_path=repo_path,
-            )
-        else:
-            pipeline = self(uuid, repo_path=repo_path, config=config)
-        return pipeline
+        if PipelineType.INTEGRATION != config.get('type'):
+            return cls(uuid, repo_path=repo_path, config=config)
+        catalog = None
+        catalog_config_path = os.path.join(
+            repo_path,
+            PIPELINES_FOLDER,
+            uuid,
+            DATA_INTEGRATION_CATALOG_FILE,
+        )
+        if os.path.exists(catalog_config_path):
+            async with aiofiles.open(catalog_config_path, mode='r') as f:
+                try:
+                    catalog = json.loads(await f.read())
+                except Exception as err:
+                    catalog = {}
+                    print(err)
+        return IntegrationPipeline(
+            uuid,
+            catalog=catalog,
+            config=config,
+            repo_path=repo_path,
+        )
 
     @classmethod
-    def get_all_pipelines(self, repo_path):
+    def get_all_pipelines(cls, repo_path):
         pipelines_folder = os.path.join(repo_path, PIPELINES_FOLDER)
         if not os.path.exists(pipelines_folder):
             os.mkdir(pipelines_folder)
@@ -256,7 +253,7 @@ class Pipeline:
         ]
 
     @classmethod
-    def get_pipelines_by_block(self, block, repo_path=None, widget=False) -> List['Pipeline']:
+    def get_pipelines_by_block(cls, block, repo_path=None, widget=False) -> List['Pipeline']:
         repo_path = repo_path or get_repo_path()
         pipelines_folder = os.path.join(repo_path, PIPELINES_FOLDER)
         pipelines = []
@@ -272,7 +269,7 @@ class Pipeline:
         return pipelines
 
     @classmethod
-    def is_valid_pipeline(self, pipeline_path):
+    def is_valid_pipeline(cls, pipeline_path):
         return os.path.isdir(pipeline_path) and os.path.exists(
             os.path.join(pipeline_path, METADATA_FILE_NAME)
         )
@@ -307,11 +304,11 @@ class Pipeline:
         This function will schedule the block execution in topological
         order based on a block's upstream dependencies.
         """
-        root_blocks = []
-        for block in self.blocks_by_uuid.values():
-            if len(block.upstream_blocks) == 0:
-                root_blocks.append(block)
-
+        root_blocks = [
+            block
+            for block in self.blocks_by_uuid.values()
+            if len(block.upstream_blocks) == 0
+        ]
         execution_task = asyncio.create_task(
             run_blocks(
                 root_blocks,
@@ -341,22 +338,24 @@ class Pipeline:
         """
         if self.type == PipelineType.STREAMING:
             from mage_ai.data_preparation.executors.streaming_pipeline_executor \
-                import StreamingPipelineExecutor
+                    import StreamingPipelineExecutor
             StreamingPipelineExecutor(self).execute(
                 build_block_output_stdout=build_block_output_stdout,
             )
         else:
-            root_blocks = []
-            for block in self.blocks_by_uuid.values():
-                if len(block.upstream_blocks) == 0 and block.type in [
+            root_blocks = [
+                block
+                for block in self.blocks_by_uuid.values()
+                if len(block.upstream_blocks) == 0
+                and block.type
+                in [
                     BlockType.DATA_EXPORTER,
                     BlockType.DATA_LOADER,
                     BlockType.DBT,
                     BlockType.TRANSFORMER,
                     BlockType.SENSOR,
-                ]:
-                    root_blocks.append(block)
-
+                ]
+            ]
             run_blocks_sync(
                 root_blocks,
                 analyze_outputs=analyze_outputs,
@@ -477,7 +476,9 @@ class Pipeline:
 
     def to_dict_base(self, exclude_data_integration=False) -> Dict:
         base = dict(
-            data_integration=self.data_integration if not exclude_data_integration else None,
+            data_integration=None
+            if exclude_data_integration
+            else self.data_integration,
             description=self.description,
             name=self.name,
             type=self.type.value if type(self.type) is not str else self.type,
@@ -685,7 +686,7 @@ class Pipeline:
             self.save()
 
         if update_content:
-            block_uuid_mapping = dict()
+            block_uuid_mapping = {}
 
             arr = []
 
@@ -695,14 +696,17 @@ class Pipeline:
                 arr.append(('widgets', data['widgets'], self.widgets_by_uuid))
 
             if 'extensions' in data:
-                for extension_uuid, extension in data['extensions'].items():
-                    if 'blocks' in extension:
-                        arr.append((
-                            'extension_blocks',
-                            extension['blocks'],
-                            self.extensions.get(extension_uuid, {}).get('blocks_by_uuid', {}),
-                        ))
-
+                arr.extend(
+                    (
+                        'extension_blocks',
+                        extension['blocks'],
+                        self.extensions.get(extension_uuid, {}).get(
+                            'blocks_by_uuid', {}
+                        ),
+                    )
+                    for extension_uuid, extension in data['extensions'].items()
+                    if 'blocks' in extension
+                )
             for tup in arr:
                 key, blocks_arr, mapping = tup
                 widget = key == 'widgets'
@@ -718,7 +722,7 @@ class Pipeline:
                     if 'content' in block_data:
                         await block.update_content_async(block_data['content'], widget=widget)
                     if 'callback_content' in block_data \
-                            and block.callback_block:
+                                and block.callback_block:
                         await block.callback_block.update_content_async(
                             block_data['callback_content'],
                             widget=widget,
@@ -731,16 +735,15 @@ class Pipeline:
                     if block_data.get('has_callback') is not None:
                         block.update(extract(block_data, ['has_callback']))
 
-                    configuration = block_data.get('configuration')
-                    if configuration:
+                    if configuration := block_data.get('configuration'):
                         if configuration.get('dynamic') and not is_dynamic_block(block):
                             for downstream_block in block.downstream_blocks:
-                                dynamic_blocks = list(filter(
-                                    is_dynamic_block,
-                                    downstream_block.upstream_blocks,
-                                ))
-
-                                if len(dynamic_blocks) >= 1:
+                                if dynamic_blocks := list(
+                                    filter(
+                                        is_dynamic_block,
+                                        downstream_block.upstream_blocks,
+                                    )
+                                ):
                                     db_uuids = [block.uuid] + [b.uuid for b in dynamic_blocks]
                                     raise NoMultipleDynamicUpstreamBlocks(
                                         f'Block {downstream_block.uuid} can only have 1 '
@@ -773,7 +776,7 @@ class Pipeline:
                                 for b in block_data['upstream_blocks']
                             ]
 
-                        if len(keys_to_update) >= 1:
+                        if keys_to_update:
                             block.update(extract(block_data, keys_to_update))
 
                         should_save_async = should_save_async or True
@@ -889,11 +892,7 @@ class Pipeline:
         else:
             mapping = self.blocks_by_uuid
 
-        block = mapping.get(block_uuid)
-        if not block:
-            block = mapping.get(block_uuid.split(':')[0])
-
-        return block
+        return mapping.get(block_uuid) or mapping.get(block_uuid.split(':')[0])
 
     def get_blocks(self, block_uuids, widget=False):
         mapping = self.widgets_by_uuid if widget else self.blocks_by_uuid
@@ -912,7 +911,7 @@ class Pipeline:
         return block_uuid in self.blocks_by_uuid
 
     def update_block(self, block, upstream_block_uuids=None, widget=False):
-        save_kwargs = dict()
+        save_kwargs = {}
 
         extension_uuid = block.extension_uuid
         is_extension = BlockType.EXTENSION == block.type
@@ -1226,7 +1225,7 @@ class Pipeline:
             error_msg (str): Error message to print if cycle is found.
             Defaults to 'A cycle was detected'
         """
-        combined_blocks = dict()
+        combined_blocks = {}
 
         for extension in self.extensions.values():
             if 'blocks_by_uuid' not in extension:
@@ -1247,7 +1246,7 @@ class Pipeline:
 
         def __check_cycle(block: Block):
             virtual_stack = [StackFrame(block)]
-            while len(virtual_stack) > 0:
+            while virtual_stack:
                 frame = virtual_stack[-1]
                 if status[frame.uuid] == 'validated':
                     virtual_stack.pop()

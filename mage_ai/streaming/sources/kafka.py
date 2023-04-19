@@ -45,7 +45,7 @@ class KafkaConfig(BaseConfig):
     serde_config: SerDeConfig = None
 
     @classmethod
-    def parse_config(self, config: Dict) -> Dict:
+    def parse_config(cls, config: Dict) -> Dict:
         ssl_config = config.get('ssl_config')
         sasl_config = config.get('sasl_config')
         serde_config = config.get('serde_config')
@@ -140,7 +140,7 @@ class KafkaSource(BaseSource):
                         self.__print_message(message)
                         msg_printed = True
                     message_values.append(self.__deserialize_message(message.value))
-            if len(message_values) > 0:
+            if message_values:
                 handler(message_values)
 
     def test_connection(self):

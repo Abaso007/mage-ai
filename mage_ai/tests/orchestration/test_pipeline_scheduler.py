@@ -15,15 +15,11 @@ from unittest.mock import MagicMock, patch
 
 class PipelineSchedulerTests(DBTestCase):
     @classmethod
-    def setUpClass(self):
+    def setUpClass(cls):
         super().setUpClass()
-        self.pipeline = create_pipeline_with_blocks(
-            'test pipeline',
-            self.repo_path,
-        )
-        self.dynamic_pipeline = create_pipeline_with_dynamic_blocks(
-            'test dynamic pipeline',
-            self.repo_path,
+        cls.pipeline = create_pipeline_with_blocks('test pipeline', cls.repo_path)
+        cls.dynamic_pipeline = create_pipeline_with_dynamic_blocks(
+            'test dynamic pipeline', cls.repo_path
         )
 
     def test_start(self):

@@ -19,8 +19,8 @@ class ApiTriggerPipelineHandler(BaseHandler):
         pipeline_schedule = PipelineSchedule.query.get(int(pipeline_schedule_id))
 
         if ScheduleType.API == pipeline_schedule.schedule_type and \
-            pipeline_schedule.token and \
-                pipeline_schedule.token != token:
+                pipeline_schedule.token and \
+                    pipeline_schedule.token != token:
             raise UnauthenticatedRequestException(
                 f'Invalid token for pipeline schedule ID {pipeline_schedule_id}.',
             )
@@ -40,8 +40,7 @@ class ApiTriggerPipelineHandler(BaseHandler):
         if is_integration:
             payload['create_block_runs'] = False
 
-        body = self.request.body
-        if body:
+        if body := self.request.body:
             payload['event_variables'] = {}
 
             for k, v in json.loads(body).items():

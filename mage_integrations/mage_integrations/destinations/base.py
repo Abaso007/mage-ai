@@ -113,13 +113,13 @@ class Destination():
         self.versions = None
 
     @classmethod
-    def templates(self) -> List[Dict]:
-        parts = inspect.getfile(self).split('/')
-        absolute_path = get_abs_path(f"{'/'.join(parts[:len(parts) - 1])}/templates")
+    def templates(cls) -> List[Dict]:
+        parts = inspect.getfile(cls).split('/')
+        absolute_path = get_abs_path(f"{'/'.join(parts[:-1])}/templates")
 
         templates = {}
         for filename in os.listdir(absolute_path):
-            path = absolute_path + '/' + filename
+            path = f'{absolute_path}/{filename}'
             if isfile(path):
                 file_raw = filename.replace('.json', '')
                 with open(path) as file:
@@ -231,7 +231,7 @@ class Destination():
             tags=tags,
         )
 
-        if len(batch_data) >= 1:
+        if batch_data:
             self.export_batch_data(batch_data, stream)
 
             self.logger.info(
@@ -269,11 +269,16 @@ class Destination():
         schema['properties'] = merge_dict(schema['properties'], INTERNAL_COLUMN_SCHEMA)
 
         if STREAM_OVERRIDE_SETTINGS_COLUMNS_KEY in self.streams_override_settings:
-            static_columns_schema = {}
-            for k in self.streams_override_settings[STREAM_OVERRIDE_SETTINGS_COLUMNS_KEY].keys():
-                static_columns_schema[k] = dict(type=[
-                    COLUMN_TYPE_STRING,
-                ])
+            static_columns_schema = {
+                k: dict(
+                    type=[
+                        COLUMN_TYPE_STRING,
+                    ]
+                )
+                for k in self.streams_override_settings[
+                    STREAM_OVERRIDE_SETTINGS_COLUMNS_KEY
+                ].keys()
+            }
             schema['properties'] = merge_dict(schema['properties'], static_columns_schema)
 
         if STREAM_OVERRIDE_SETTINGS_PARTITION_KEYS_KEY in self.streams_override_settings:
@@ -284,8 +289,7 @@ class Destination():
         self.validators[stream] = Draft4Validator(schema)
 
     def process_state(self, row: Dict, tags: Dict = dict()) -> None:
-        state = row.get(KEY_VALUE)
-        if state:
+        if state := row.get(KEY_VALUE):
             self._emit_state(state)
         else:
             message = 'A state message is missing a state value.'
@@ -338,10 +342,10 @@ class Destination():
         final_state_data = None
         current_byte_size = 0
 
-        tags = dict()
+        tags = {}
 
         for line in self.__text_input(input_buffer):
-            tags = dict()
+            tags = {}
             record_data = None
 
             try:
@@ -374,10 +378,10 @@ class Destination():
                 if row_value.get('current_stream'):
                     stream = row_value['current_stream']
                 elif row_value.get('bookmarks'):
-                    bookmarks = row_value['bookmarks']
                     if 'currently_syncing' in row:
                         stream = row['currently_syncing']
                     else:
+                        bookmarks = row_value['bookmarks']
                         stream = list(bookmarks.keys())[0]
                 else:
                     stream = list(row_value.keys())[0]
@@ -423,7 +427,7 @@ class Destination():
                     else:
                         arr = [stream]
 
-                    for s in arr:
+                    for _ in arr:
                         batches_by_stream[stream]['state_data'].append(state_data)
                 else:
                     self.process_state(**state_data)
@@ -433,25 +437,24 @@ class Destination():
                 self.logger.exception(message, tags=tags)
                 raise Exception(message)
 
-            if self.batch_processing:
-                if record_data:
-                    current_byte_size += sys.getsizeof(json.dumps(record_data))
+            if self.batch_processing and record_data:
+                current_byte_size += sys.getsizeof(json.dumps(record_data))
 
-                    if current_byte_size >= MAXIMUM_BATCH_BYTE_SIZE:
-                        self.__process_batch_set(
-                            batches_by_stream,
-                            final_record_data,
-                            final_state_data,
-                            tags=dict(
-                                batch=batch_number,
-                                batch_byte_size=current_byte_size,
-                            ),
-                        )
-                        batches_by_stream = {}
-                        final_record_data = None
-                        final_state_data = None
-                        current_byte_size = 0
-                        batch_number += 1
+                if current_byte_size >= MAXIMUM_BATCH_BYTE_SIZE:
+                    self.__process_batch_set(
+                        batches_by_stream,
+                        final_record_data,
+                        final_state_data,
+                        tags=dict(
+                            batch=batch_number,
+                            batch_byte_size=current_byte_size,
+                        ),
+                    )
+                    batches_by_stream = {}
+                    final_record_data = None
+                    final_state_data = None
+                    current_byte_size = 0
+                    batch_number += 1
 
         self.__process_batch_set(
             batches_by_stream,
@@ -492,8 +495,8 @@ class Destination():
 
         if len(stream_states.values()) >= 1:
             bookmarks = {}
-            for stream, state in stream_states.items():
-                bookmarks.update(state['row'][KEY_VALUE]['bookmarks'])
+            for state in stream_states.values():
+                bookmarks |= state['row'][KEY_VALUE]['bookmarks']
 
             state_data = dict(row={
                 KEY_VALUE: dict(bookmarks=bookmarks),
@@ -609,12 +612,9 @@ class Destination():
             self.logger.info(f'Reading input from file path {self.input_file_path}.')
 
             with open(self.input_file_path) as f:
-                for line in f:
-                    yield line
+                yield from f
         else:
-            text_input = io.TextIOWrapper(input_buffer, encoding='utf-8')
-            for line in text_input:
-                yield line
+            yield from io.TextIOWrapper(input_buffer, encoding='utf-8')
 
     def __validate_and_prepare_record(
         self,

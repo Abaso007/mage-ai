@@ -29,9 +29,7 @@ def create_block_run_from_dynamic_child(
     metadata.update(dict(dynamic_block_index=index))
 
     block_uuid = dynamic_block_uuid(block.uuid, metadata, index)
-    block_run = pipeline_run.create_block_run(block_uuid, metrics=metadata)
-
-    return block_run
+    return pipeline_run.create_block_run(block_uuid, metrics=metadata)
 
 
 def create_block_runs_from_dynamic_block(
@@ -72,11 +70,7 @@ def create_block_runs_from_dynamic_block(
         block_runs_created_by_block_uuid = {}
         dynamic_child_block_runs = []
         for idx, value in enumerate(values):
-            if idx < len(block_metadata):
-                metadata = block_metadata[idx].copy()
-            else:
-                metadata = {}
-
+            metadata = block_metadata[idx].copy() if idx < len(block_metadata) else {}
             arr = []
             for upstream_block in downstream_block.upstream_blocks:
                 if block_uuid_original == upstream_block.uuid and block_uuid_original != block_uuid:
@@ -153,20 +147,20 @@ def create_block_runs_from_dynamic_block(
                     """
                     dynamic_ancestor_descendants = get_all_descendants(dynamic_ancestor)
 
-                    dynamic_ancestor_has_reduce_block = False
-                    for d in dynamic_ancestor_descendants:
-                        if d.uuid in ancestors_uuids:
-                            if should_reduce_output(d):
-                                dynamic_ancestor_has_reduce_block = True
-                                break
+                    dynamic_ancestor_has_reduce_block = any(
+                        d.uuid in ancestors_uuids and should_reduce_output(d)
+                        for d in dynamic_ancestor_descendants
+                    )
                     if not dynamic_ancestor_has_reduce_block:
                         skip_creating_downstream = True
                         break
 
-                    down_uuids_as_ancestors = []
-                    for down in dynamic_ancestor.downstream_blocks:
-                        if down.uuid in ancestors_uuids and not should_reduce_output(down):
-                            down_uuids_as_ancestors.append(down.uuid)
+                    down_uuids_as_ancestors = [
+                        down.uuid
+                        for down in dynamic_ancestor.downstream_blocks
+                        if down.uuid in ancestors_uuids
+                        and not should_reduce_output(down)
+                    ]
                     skip_creating_downstream = len(down_uuids_as_ancestors) >= 2
 
                 # Only create downstream block runs if it doesn’t have dynamically created upstream
@@ -228,14 +222,13 @@ def get_leaf_nodes(
     leafs = []
 
     def _get_leaf_nodes(b):
-        if condition is None or condition(b):
-            if b is not None:
-                arr = getattr(b, attribute_key)
-                if len(arr) == 0 or (include_all_nodes and b.uuid != block.uuid):
-                    leafs.append(b)
+        if (condition is None or condition(b)) and b is not None:
+            arr = getattr(b, attribute_key)
+            if len(arr) == 0 or (include_all_nodes and b.uuid != block.uuid):
+                leafs.append(b)
 
-                for n in arr:
-                    _get_leaf_nodes(n)
+            for n in arr:
+                _get_leaf_nodes(n)
 
     _get_leaf_nodes(block)
 
@@ -285,7 +278,7 @@ def is_valid_print_variable(k, v, block_uuid):
     if type(v) is not str:
         return False
     # Not store empty json
-    if v == '{}' or v == '':
+    if v in ['{}', '']:
         return False
     try:
         json_data = json.loads(v)
@@ -322,7 +315,7 @@ def fetch_input_variables(
     dynamic_block_index: int = None,
     dynamic_upstream_block_uuids: List[str] = None,
 ) -> Tuple[List, List, List]:
-    spark = (global_vars or dict()).get('spark')
+    spark = (global_vars or {}).get('spark')
     upstream_block_uuids_final = []
 
     kwargs_vars = []
@@ -331,7 +324,7 @@ def fetch_input_variables(
     if input_args is not None:
         input_vars = input_args
     elif pipeline is not None:
-        input_vars = [None for i in range(len(upstream_block_uuids))]
+        input_vars = [None for _ in range(len(upstream_block_uuids))]
         input_variables_by_uuid = input_variables(
             pipeline,
             upstream_block_uuids,
@@ -366,7 +359,7 @@ def fetch_input_variables(
                 reduce_output_indexes.append((idx, upstream_block_uuid))
             elif is_dynamic_block(upstream_block):
                 val = None
-                if len(variable_values) >= 1:
+                if variable_values:
                     arr = variable_values[0]
                     index_to_use = 0 if dynamic_block_index is None else dynamic_block_index
                     if type(arr) is list and len(arr) >= 1 and index_to_use < len(arr):
@@ -380,7 +373,7 @@ def fetch_input_variables(
                     if type(arr) is list and len(arr) >= 1 and index_to_use < len(arr):
                         val = arr[index_to_use]
                     kwargs_vars.append(val)
-            elif not dynamic_upstream_block_uuids or not upstream_in_dynamic_upstream:
+            else:
                 if type(variable_values) is list and len(variable_values) == 1:
                     final_val = variable_values[0]
                 else:

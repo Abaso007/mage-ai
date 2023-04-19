@@ -49,8 +49,7 @@ class Amplitude(Connection):
         # Use a large timedelta or else Amplitude will return a 429 error
         intervals = date_intervals(start_date, end_date, timedelta(days=14))
         for sd, ed in intervals:
-            zip_file = self.__fetch_files(sd, ed)
-            if zip_file:
+            if zip_file := self.__fetch_files(sd, ed):
                 data += self.__build_data_from_zip_file(zip_file)
 
         self.info('Loading completed.', tags=merge_dict(tags, dict(count=len(data))))
@@ -58,7 +57,7 @@ class Amplitude(Connection):
         return data
 
     def build_tags(self, **kwargs):
-        tags = dict()
+        tags = {}
         if kwargs.get('start_date'):
             tags['start'] = kwargs['start_date']
             kwargs.pop('start_date')

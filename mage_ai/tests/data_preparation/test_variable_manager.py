@@ -34,12 +34,12 @@ class VariableManagerTest(DBTestCase):
                 count=100,
                 count_distinct=50,
             ),
-            insights=dict(),
+            insights={},
             suggestions=[
                 dict(
                     title='Remove outliers',
                 )
-            ]
+            ],
         )
         variable_manager.add_variable('test_pipeline_1', 'block1', 'var1', data1)
         variable_manager.add_variable('test_pipeline_1', 'block2', 'var2', data2)

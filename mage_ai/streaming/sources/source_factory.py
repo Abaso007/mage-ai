@@ -4,7 +4,7 @@ from typing import Dict
 
 class SourceFactory:
     @classmethod
-    def get_source(self, config: Dict, **kwargs):
+    def get_source(cls, config: Dict, **kwargs):
         connector_type = config['connector_type']
         if connector_type == SourceType.AMAZON_SQS:
             from mage_ai.streaming.sources.amazon_sqs import AmazonSqsSource

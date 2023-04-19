@@ -69,7 +69,7 @@ class PipelineSchedule(BaseModel):
     )
 
     def get_settings(self) -> 'SettingsConfig':
-        settings = self.settings if self.settings else dict()
+        settings = self.settings if self.settings else {}
         return SettingsConfig.load(config=settings)
 
     @property
@@ -78,10 +78,12 @@ class PipelineSchedule(BaseModel):
 
     @validates('schedule_interval')
     def validate_schedule_interval(self, key, schedule_interval):
-        if schedule_interval and schedule_interval not in \
-                [e.value for e in ScheduleInterval]:
-            if not croniter.is_valid(schedule_interval):
-                raise ValueError('Cron expression is invalid.')
+        if (
+            schedule_interval
+            and schedule_interval not in [e.value for e in ScheduleInterval]
+            and not croniter.is_valid(schedule_interval)
+        ):
+            raise ValueError('Cron expression is invalid.')
 
         return schedule_interval
 
@@ -93,26 +95,25 @@ class PipelineSchedule(BaseModel):
 
     @classmethod
     @safe_db_query
-    def active_schedules(self, pipeline_uuids: List[str] = None) -> List['PipelineSchedule']:
-        query = self.query.filter(self.status == ScheduleStatus.ACTIVE)
+    def active_schedules(cls, pipeline_uuids: List[str] = None) -> List['PipelineSchedule']:
+        query = cls.query.filter(cls.status == ScheduleStatus.ACTIVE)
         if pipeline_uuids is not None:
             query = query.filter(PipelineSchedule.pipeline_uuid.in_(pipeline_uuids))
         return query.all()
 
     @classmethod
-    def create(self, **kwargs) -> 'PipelineSchedule':
+    def create(cls, **kwargs) -> 'PipelineSchedule':
         if 'token' not in kwargs:
             kwargs['token'] = uuid.uuid4().hex
-        model = super().create(**kwargs)
-        return model
+        return super().create(**kwargs)
 
     @classmethod
     @safe_db_query
-    def create_or_update(self, trigger_config: Trigger):
+    def create_or_update(cls, trigger_config: Trigger):
         try:
             existing_trigger = PipelineSchedule.query.filter(
-                self.name == trigger_config.name,
-                self.pipeline_uuid == trigger_config.pipeline_uuid,
+                cls.name == trigger_config.name,
+                cls.pipeline_uuid == trigger_config.pipeline_uuid,
             ).one_or_none()
         except Exception:
             traceback.print_exc()
@@ -133,7 +134,7 @@ class PipelineSchedule(BaseModel):
         if existing_trigger:
             existing_trigger.update(**kwargs)
         else:
-            self.create(**kwargs)
+            cls.create(**kwargs)
 
     def current_execution_date(self) -> datetime:
         if self.schedule_interval is None:
@@ -263,12 +264,8 @@ class PipelineRun(BaseModel):
 
     @classmethod
     @safe_db_query
-    def active_runs(
-        self,
-        pipeline_uuids: List[str] = None,
-        include_block_runs: bool = False,
-    ) -> List['PipelineRun']:
-        query = self.query.filter(self.status == self.PipelineRunStatus.RUNNING)
+    def active_runs(cls, pipeline_uuids: List[str] = None, include_block_runs: bool = False) -> List['PipelineRun']:
+        query = cls.query.filter(cls.status == cls.PipelineRunStatus.RUNNING)
         if pipeline_uuids is not None:
             query = query.filter(PipelineRun.pipeline_uuid.in_(pipeline_uuids))
         if include_block_runs:
@@ -276,7 +273,7 @@ class PipelineRun(BaseModel):
         return query.all()
 
     @classmethod
-    def create(self, create_block_runs: bool = True, **kwargs) -> 'PipelineRun':
+    def create(cls, create_block_runs: bool = True, **kwargs) -> 'PipelineRun':
         pipeline_run = super().create(**kwargs)
         pipeline_uuid = kwargs.get('pipeline_uuid')
         if pipeline_uuid is not None and create_block_runs:
@@ -286,16 +283,12 @@ class PipelineRun(BaseModel):
 
     @classmethod
     @safe_db_query
-    def in_progress_runs(
-        self,
-        pipeline_schedules: List[int],
-    ):
-        return self.query.filter(
+    def in_progress_runs(cls, pipeline_schedules: List[int]):
+        return cls.query.filter(
             PipelineRun.pipeline_schedule_id.in_(pipeline_schedules),
-            PipelineRun.status.in_([
-                self.PipelineRunStatus.INITIAL,
-                self.PipelineRunStatus.RUNNING,
-            ]),
+            PipelineRun.status.in_(
+                [cls.PipelineRunStatus.INITIAL, cls.PipelineRunStatus.RUNNING]
+            ),
             PipelineRun.passed_sla.is_(False),
         ).all()
 
@@ -386,7 +379,7 @@ class BlockRun(BaseModel):
 
     @classmethod
     @safe_db_query
-    def batch_update_status(self, block_run_ids: List[int], status):
+    def batch_update_status(cls, block_run_ids: List[int], status):
         BlockRun.query.filter(BlockRun.id.in_(block_run_ids)).update({
             BlockRun.status: status
         }, synchronize_session=False)
@@ -394,14 +387,12 @@ class BlockRun(BaseModel):
 
     @classmethod
     @safe_db_query
-    def get(self, pipeline_run_id: int = None, block_uuid: str = None) -> 'BlockRun':
-        block_runs = self.query.filter(
+    def get(cls, pipeline_run_id: int = None, block_uuid: str = None) -> 'BlockRun':
+        block_runs = cls.query.filter(
             BlockRun.pipeline_run_id == pipeline_run_id,
             BlockRun.block_uuid == block_uuid,
         ).all()
-        if len(block_runs) > 0:
-            return block_runs[0]
-        return None
+        return block_runs[0] if len(block_runs) > 0 else None
 
     def get_outputs(self, sample_count: int = None) -> List[Dict]:
         pipeline = Pipeline.get(self.pipeline_run.pipeline_uuid)
@@ -431,8 +422,8 @@ class EventMatcher(BaseModel):
         return f'EventMatcher(id={self.id}, name={self.name}, pattern={self.pattern})'
 
     @classmethod
-    def active_event_matchers(self) -> List['EventMatcher']:
-        return self.query.filter(
+    def active_event_matchers(cls) -> List['EventMatcher']:
+        return cls.query.filter(
             EventMatcher.pipeline_schedules.any(
                 PipelineSchedule.status == ScheduleStatus.ACTIVE
             )
@@ -555,7 +546,7 @@ class Backfill(BaseModel):
 
     @classmethod
     @safe_db_query
-    def filter(self, pipeline_schedule_ids: List = None):
+    def filter(cls, pipeline_schedule_ids: List = None):
         if pipeline_schedule_ids is not None:
             return Backfill.query.filter(
                 Backfill.pipeline_schedule_id.in_(pipeline_schedule_ids),

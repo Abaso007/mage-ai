@@ -1,7 +1,6 @@
 class AssociatedUserPresenter():
     def user(self, **kwargs):
-        user = self.resource.user
-        if user:
+        if user := self.resource.user:
             return {
                 'avatar': user.avatar,
                 'first_name': user.first_name,

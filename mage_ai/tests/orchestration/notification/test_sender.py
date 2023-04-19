@@ -13,10 +13,12 @@ from unittest.mock import patch
 
 class NotificationSenderTests(DBTestCase):
     @classmethod
-    def setUpClass(self):
+    def setUpClass(cls):
         super().setUpClass()
-        self.pipeline = create_pipeline('test pipeline', self.repo_path)
-        self.pipeline_run = create_pipeline_run_with_schedule(pipeline_uuid='test_pipeline')
+        cls.pipeline = create_pipeline('test pipeline', cls.repo_path)
+        cls.pipeline_run = create_pipeline_run_with_schedule(
+            pipeline_uuid='test_pipeline'
+        )
 
     @patch('mage_ai.orchestration.notification.sender.send_slack_message')
     @patch('mage_ai.orchestration.notification.sender.send_email')

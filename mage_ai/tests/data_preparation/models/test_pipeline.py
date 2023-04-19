@@ -19,7 +19,7 @@ class PipelineTest(DBTestCase):
         )
         self.assertEqual(pipeline.uuid, 'test_pipeline')
         self.assertEqual(pipeline.name, 'test pipeline')
-        self.assertEqual(pipeline.blocks_by_uuid, dict())
+        self.assertEqual(pipeline.blocks_by_uuid, {})
         self.assertTrue(os.path.exists(f'{self.repo_path}/pipelines/test_pipeline/__init__.py'))
         self.assertTrue(os.path.exists(f'{self.repo_path}/pipelines/test_pipeline/metadata.yaml'))
 
@@ -604,7 +604,7 @@ class PipelineTest(DBTestCase):
 
     def test_save_with_empty_content(self):
         pipeline = self.__create_pipeline_with_blocks('test pipeline 11')
-        with patch.object(pipeline, 'to_dict', return_value=dict()):
+        with patch.object(pipeline, 'to_dict', return_value={}):
             with self.assertRaises(Exception) as err:
                 pipeline.save()
             self.assertTrue('Writing empty pipeline metadata is prevented.' in str(err.exception))

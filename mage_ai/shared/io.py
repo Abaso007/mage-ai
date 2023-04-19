@@ -6,7 +6,7 @@ import traceback
 
 
 def safe_write(filepath: str, content: str, write_func: Callable = None):
-    temp_file_path = filepath + '.temp'
+    temp_file_path = f'{filepath}.temp'
     if os.path.isfile(filepath):
         shutil.copy2(filepath, temp_file_path)
         prev_existed = True
@@ -34,7 +34,7 @@ def safe_write(filepath: str, content: str, write_func: Callable = None):
 
 
 async def safe_write_async(filepath: str, content: str, write_func: Callable = None):
-    temp_file_path = filepath + '.temp'
+    temp_file_path = f'{filepath}.temp'
     if os.path.isfile(filepath):
         shutil.copy2(filepath, temp_file_path)
         prev_existed = True

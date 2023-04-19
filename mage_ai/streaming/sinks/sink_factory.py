@@ -4,7 +4,7 @@ from typing import Dict
 
 class SinkFactory:
     @classmethod
-    def get_sink(self, config: Dict, **kwargs):
+    def get_sink(cls, config: Dict, **kwargs):
         connector_type = config['connector_type']
         if connector_type == SinkType.AMAZON_S3:
             from mage_ai.streaming.sinks.amazon_s3 import AmazonS3Sink

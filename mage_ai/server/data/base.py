@@ -31,9 +31,7 @@ class Model:
 
         if id is None:
             dirs = Model.gen_integer_dir_list(self.path)
-            max_id = 0
-            if len(dirs) > 0:
-                max_id = sorted(dirs, reverse=True)[0]
+            max_id = sorted(dirs, reverse=True)[0] if len(dirs) > 0 else 0
             self.id = max_id + 1
         else:
             self.id = id
@@ -66,9 +64,11 @@ class Model:
 
     def read_parquet_file(self, file_name):
         file_path = os.path.join(self.dir, file_name)
-        if not os.path.exists(file_path):
-            return pd.DataFrame()
-        return pd.read_parquet(file_path, engine='pyarrow')
+        return (
+            pd.read_parquet(file_path, engine='pyarrow')
+            if os.path.exists(file_path)
+            else pd.DataFrame()
+        )
 
     def write_parquet_file(self, file_name, df):
         df_output = df.copy()

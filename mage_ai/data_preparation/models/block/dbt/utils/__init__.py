@@ -126,9 +126,9 @@ def add_blocks_upstream_from_refs(
         filename = file_path.split(os.sep)[-1]
         parts = filename.split('.')
         if len(parts) >= 2:
-            fn = '.'.join(parts[:-1])
             file_extension = parts[-1]
-            if 'sql' == file_extension:
+            if file_extension == 'sql':
+                fn = '.'.join(parts[:-1])
                 files_by_name[fn] = file_path_orig
 
     current_upstream_blocks = []
@@ -168,9 +168,7 @@ def add_blocks_upstream_from_refs(
         current_upstream_blocks.append(new_block)
 
     if add_current_block:
-        arr = []
-        for b in current_upstream_blocks:
-            arr.append(b)
+        arr = list(current_upstream_blocks)
         block.upstream_blocks = arr
         added_blocks.append(block)
 
@@ -283,8 +281,9 @@ def add_table_to_source(block: 'Block', settings: Dict, source_name: str, table_
     )
 
     if settings:
-        source = find(lambda x: x['name'] == source_name, settings.get('sources', []))
-        if source:
+        if source := find(
+            lambda x: x['name'] == source_name, settings.get('sources', [])
+        ):
             if not source.get('tables'):
                 source['tables'] = []
             if table_name not in [x['name'] for x in source['tables']]:
@@ -452,14 +451,16 @@ def config_file_loader_and_configuration(block, profile_target: str) -> Dict:
         ssl_disabled = profile.get('ssl_disabled')
         username = profile.get('username')
 
-        config_file_loader = ConfigFileLoader(config=dict(
-            MYSQL_CONNECTION_METHOD='ssh_tunnel' if not ssl_disabled else None,
-            MYSQL_DATABASE=schema,
-            MYSQL_HOST=host,
-            MYSQL_PASSWORD=password,
-            MYSQL_PORT=port,
-            MYSQL_USER=username,
-        ))
+        config_file_loader = ConfigFileLoader(
+            config=dict(
+                MYSQL_CONNECTION_METHOD=None if ssl_disabled else 'ssh_tunnel',
+                MYSQL_DATABASE=schema,
+                MYSQL_HOST=host,
+                MYSQL_PASSWORD=password,
+                MYSQL_PORT=port,
+                MYSQL_USER=username,
+            )
+        )
         configuration = dict(
             data_provider=profile_type,
             data_provider_database=schema,
@@ -569,7 +570,7 @@ def create_upstream_tables(
     cache_upstream_dbt_models: bool = False,
     **kwargs,
 ) -> None:
-    if len([b for b in block.upstream_blocks if BlockType.SENSOR != b.type]) == 0:
+    if not [b for b in block.upstream_blocks if BlockType.SENSOR != b.type]:
         return
 
     config_file_loader, configuration = config_file_loader_and_configuration(
@@ -866,17 +867,17 @@ def build_command_line_arguments(
         elif run_settings.get('test_model'):
             dbt_command = 'test'
 
-    variables_json = {}
-    for k, v in variables.items():
-        if type(v) is str or \
-                type(v) is int or \
-                type(v) is bool or \
-                type(v) is float or \
-                type(v) is dict or \
-                type(v) is list or \
-                type(v) is datetime:
-            variables_json[k] = v
-
+    variables_json = {
+        k: v
+        for k, v in variables.items()
+        if type(v) is str
+        or type(v) is int
+        or type(v) is bool
+        or type(v) is float
+        or type(v) is dict
+        or type(v) is list
+        or type(v) is datetime
+    }
     args = [
         '--vars',
         simplejson.dumps(
@@ -970,11 +971,10 @@ def run_dbt_tests(
 
     with redirect_stdout(stdout):
         lines = proc1.stdout.decode().split('\n')
-        for idx, line in enumerate(lines):
+        for line in lines:
             print(line)
 
-            match = re.search('ERROR=([0-9]+)', line)
-            if match:
+            if match := re.search('ERROR=([0-9]+)', line):
                 number_of_errors += int(match.groups()[0])
 
     if number_of_errors >= 1:
@@ -1039,13 +1039,14 @@ def fetch_model_data(
             f'no schema found in profile target {profile_target}.',
         )
 
-    # Check dbt_profiles for schema to append
-    model_configurations = get_model_configurations_from_dbt_project_settings(block)
-    model_configuration_schema = None
-    if model_configurations:
-        model_configuration_schema = model_configurations.get('schema') or \
-            model_configurations.get('+schema')
-
+    if model_configurations := get_model_configurations_from_dbt_project_settings(
+        block
+    ):
+        model_configuration_schema = model_configurations.get(
+            'schema'
+        ) or model_configurations.get('+schema')
+    else:
+        model_configuration_schema = None
     if model_configuration_schema:
         schema = f"{schema}_{model_configuration_schema}"
 

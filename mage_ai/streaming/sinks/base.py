@@ -51,11 +51,9 @@ class BaseSink(ABC):
             return buffer
         try:
             with open(self.buffer_path) as fp:
-                for line in fp:
-                    buffer.append(json.loads(line))
+                buffer.extend(json.loads(line) for line in fp)
         except Exception:
             traceback.print_exc()
-            pass
         return buffer
 
     def test_connection(self):

@@ -58,15 +58,15 @@ def should_cache_data_from_upstream(
     loader1 = ConfigFileLoader(config_path, data_provider1)
     loader2 = ConfigFileLoader(config_path, data_provider2)
 
-    return not all([
-        config1.get(k) and
-        config2.get(k) and
-        config1.get(k) == config2.get(k) for k in config_keys
-    ]) or not all([
-        loader1.config.get(k) and
-        loader2.config.get(k) and
-        loader1.config.get(k) == loader2.config.get(k) for k in config_profile_keys
-    ])
+    return not all(
+        config1.get(k) and config2.get(k) and config1.get(k) == config2.get(k)
+        for k in config_keys
+    ) or not all(
+        loader1.config.get(k)
+        and loader2.config.get(k)
+        and loader1.config.get(k) == loader2.config.get(k)
+        for k in config_profile_keys
+    )
 
 
 def interpolate_input(
@@ -86,25 +86,25 @@ def interpolate_input(
         matcher1 = '{} df_{} {}'.format('{{', idx + 1, '}}')
 
         is_sql = BlockLanguage.SQL == upstream_block.language
-        if is_sql:
-            configuration = upstream_block.configuration
-        else:
-            configuration = block.configuration
+        configuration = upstream_block.configuration if is_sql else block.configuration
         use_raw_sql = configuration.get('use_raw_sql')
 
         data_provider1 = block.configuration.get('data_provider')
         data_provider2 = upstream_block.configuration.get('data_provider')
         is_same_data_providers = data_provider1 == data_provider2
 
-        if block.configuration.get('use_raw_sql'):
-            if is_sql and data_provider1 != data_provider2:
-                raise Exception(
-                    f'Variable interpolation when using raw SQL for {matcher1} '
-                    'is not supported because '
-                    f'upstream block {upstream_block.uuid} is using a different '
-                    f'data provider ({data_provider2}) than {block.uuid}’s data provider '
-                    f'({data_provider1}). Please disable using raw SQL and try again.',
-                )
+        if (
+            block.configuration.get('use_raw_sql')
+            and is_sql
+            and data_provider1 != data_provider2
+        ):
+            raise Exception(
+                f'Variable interpolation when using raw SQL for {matcher1} '
+                'is not supported because '
+                f'upstream block {upstream_block.uuid} is using a different '
+                f'data provider ({data_provider2}) than {block.uuid}’s data provider '
+                f'({data_provider1}). Please disable using raw SQL and try again.',
+            )
 
         config_to_use = configuration if is_same_data_providers else block.configuration
         database = config_to_use.get('data_provider_database')
@@ -237,9 +237,13 @@ def extract_and_replace_text_between_strings(
     replace_string: str = '',
     case_sensitive: bool = True,
 ) -> Tuple[str, str]:
-    start_match = re.search(start_string, text, re.NOFLAG if not case_sensitive else re.IGNORECASE)
+    start_match = re.search(
+        start_string, text, re.IGNORECASE if case_sensitive else re.NOFLAG
+    )
     if end_string:
-        end_match = re.search(end_string, text, re.NOFLAG if not case_sensitive else re.IGNORECASE)
+        end_match = re.search(
+            end_string, text, re.IGNORECASE if case_sensitive else re.NOFLAG
+        )
     else:
         end_match = None
 
@@ -252,7 +256,7 @@ def extract_and_replace_text_between_strings(
 
     extracted_text = text[start_idx:end_idx]
 
-    new_text = text[0:max(start_idx - 1, 0)] + replace_string + text[end_idx + 1:]
+    new_text = text[:max(start_idx - 1, 0)] + replace_string + text[end_idx + 1:]
 
     return extracted_text, new_text
 
@@ -273,30 +277,28 @@ def extract_create_statement_table_name(text: str) -> str:
     if not statement_partial:
         return None
 
-    match1 = re.match(create_table_pattern, statement_partial, re.IGNORECASE)
-    if match1:
+    if match1 := re.match(
+        create_table_pattern, statement_partial, re.IGNORECASE
+    ):
         idx_start, idx_end = match1.span()
-        new_statement = statement_partial[0:idx_start] + statement_partial[idx_end:]
-        match2 = re.search(r'[^\s]+', new_statement.strip())
-        if match2:
-            return match2.group(0)
+        new_statement = statement_partial[:idx_start] + statement_partial[idx_end:]
+        if match2 := re.search(r'[^\s]+', new_statement.strip()):
+            return match2[0]
 
-    parts = statement_partial[:len(statement_partial) - 1].strip().split(' ')
+    parts = statement_partial[:-1].strip().split(' ')
     return parts[-1]
 
 
 def extract_insert_statement_table_names(text: str) -> List[str]:
-    matches = re.findall(
+    return re.findall(
         r'insert(?: overwrite)*(?: into)*[\s]+([\w.]+)',
         remove_comments(text),
         re.IGNORECASE,
     )
-    return matches
 
 
 def has_create_or_insert_statement(text: str) -> bool:
-    table_name = extract_create_statement_table_name(text)
-    if table_name:
+    if table_name := extract_create_statement_table_name(text):
         return True
 
     matches = extract_insert_statement_table_names(text)

@@ -27,32 +27,32 @@ class ExtensionBlock(Block):
 
             def inner(function):
                 def func(*args, **kwargs):
-                    if EXTENSION_UUID_GREAT_EXPECTATIONS == extension_name:
-                        ge = GreatExpectations(self)
-                        validators_and_uuids = ge.build_validators(*args, **kwargs)
-                        validators = [t[0] for t in validators_and_uuids]
-                        function(*validators)
+                    if EXTENSION_UUID_GREAT_EXPECTATIONS != extension_name:
+                        return function(*args, **kwargs)
+                    ge = GreatExpectations(self)
+                    validators_and_uuids = ge.build_validators(*args, **kwargs)
+                    validators = [t[0] for t in validators_and_uuids]
+                    function(*validators)
 
-                        validation_results = []
-                        for validator, uuid in validators_and_uuids:
-                            validation_result = validator.validate()
-                            for result in validation_result.results:
-                                if result.get('success', False):
-                                    print(
-                                        f'Expectations from extension {self.uuid} for ' +
-                                        f'block {uuid} succeeded.',
-                                    )
-                                else:
-                                    raise Exception(
-                                        f'Expectations from extension {self.uuid} for ' +
-                                        f'block {uuid} failed:\n{result}\n',
-                                    )
+                    validation_results = []
+                    for validator, uuid in validators_and_uuids:
+                        validation_result = validator.validate()
+                        for result in validation_result.results:
+                            if result.get('success', False):
+                                print(
+                                    f'Expectations from extension {self.uuid} for ' +
+                                    f'block {uuid} succeeded.',
+                                )
+                            else:
+                                raise Exception(
+                                    f'Expectations from extension {self.uuid} for ' +
+                                    f'block {uuid} failed:\n{result}\n',
+                                )
 
-                            validation_results.append(validation_result)
+                        validation_results.append(validation_result)
 
-                        return validation_results
+                    return validation_results
 
-                    return function(*args, **kwargs)
                 decorated_functions.append(func)
 
             return inner

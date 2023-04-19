@@ -73,8 +73,7 @@ class AmazonS3Sink(BaseSink):
 
         object_key = self.config.prefix
 
-        date_partition_format = self.config.date_partition_format
-        if date_partition_format:
+        if date_partition_format := self.config.date_partition_format:
             object_key = os.path.join(object_key, curr_time.strftime(date_partition_format))
 
         object_key = os.path.join(object_key, filename)

@@ -81,6 +81,7 @@ template:
             ConfigKey.REDSHIFT_PORT.value,
             ConfigKey.POSTGRES_DBNAME.value,
             ConfigKey.SNOWFLAKE_DEFAULT_SCHEMA.value,
+            ConfigKey.REDSHIFT_CLUSTER_ID,
         ]
         default_expected_values = [
             'test_region',
@@ -89,6 +90,7 @@ template:
             5439,
             'my_psql_db',
             'sample_schema',
+            None,
         ]
         diff_expected_values = [
             'region_test',
@@ -97,11 +99,8 @@ template:
             9453,
             'another_psql_db',
             'schema_two',
+            None,
         ]
-
-        expected_keys.append(ConfigKey.REDSHIFT_CLUSTER_ID)
-        default_expected_values.append(None)
-        diff_expected_values.append(None)
         config = ConfigFileLoader(self.test_config_path, profile='default')
         for expected_key, expected_value in zip(expected_keys, default_expected_values):
             self.assertEqual(config[expected_key], expected_value)
@@ -153,11 +152,14 @@ template:
         test_env_vars = dict(zip(expected_keys, values))
         mock_os.environ = test_env_vars
 
-        expected_keys.append(ConfigKey.REDSHIFT_CLUSTER_ID)
-        expected_keys.append(ConfigKey.SNOWFLAKE_ACCOUNT)
-        expected_keys.append(ConfigKey.POSTGRES_USER)
-        expected_keys.append(ConfigKey.POSTGRES_DBNAME)
-
+        expected_keys.extend(
+            (
+                ConfigKey.REDSHIFT_CLUSTER_ID,
+                ConfigKey.SNOWFLAKE_ACCOUNT,
+                ConfigKey.POSTGRES_USER,
+                ConfigKey.POSTGRES_DBNAME,
+            )
+        )
         expected_values = [True] * 5 + [False] * 4
 
         env_loader = EnvironmentVariableLoader()

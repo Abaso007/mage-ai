@@ -69,11 +69,7 @@ def extract(d, keys):
 
 
 def extract_arrays(input_data):
-    arr = []
-    for k, v in input_data.items():
-        if type(v) is list:
-            arr.append(v)
-    return arr
+    return [v for k, v in input_data.items() if type(v) is list]
 
 
 def group_by(func, arr):
@@ -102,7 +98,6 @@ def merge_dict(a, b):
 
 def replace_dict_nan_value(d):
     def _replace_nan_value(v):
-        if type(v) == float and math.isnan(v):
-            return None
-        return v
+        return None if type(v) == float and math.isnan(v) else v
+
     return {k: _replace_nan_value(v) for k, v in d.items()}

@@ -9,11 +9,7 @@ import traceback
 import yaml
 
 MAGE_DATA_DIR_ENV_VAR = 'MAGE_DATA_DIR'
-if is_test():
-    DEFAULT_MAGE_DATA_DIR = './'
-else:
-    DEFAULT_MAGE_DATA_DIR = '~/.mage_data'
-
+DEFAULT_MAGE_DATA_DIR = './' if is_test() else '~/.mage_data'
 DEFAULT_VARIABLE_RETENTION_PERIOD = '30d'
 
 
@@ -32,7 +28,7 @@ class RepoConfig:
                         )
                         repo_config = yaml.full_load(config_file) or {}
                 else:
-                    repo_config = dict()
+                    repo_config = {}
             else:
                 repo_config = config_dict
 
@@ -66,18 +62,18 @@ class RepoConfig:
             self.ecs_config = repo_config.get('ecs_config')
             self.emr_config = repo_config.get('emr_config')
             self.gcp_cloud_run_config = repo_config.get('gcp_cloud_run_config')
-            self.notification_config = repo_config.get('notification_config', dict())
-            self.queue_config = repo_config.get('queue_config', dict())
+            self.notification_config = repo_config.get('notification_config', {})
+            self.queue_config = repo_config.get('queue_config', {})
 
             self.s3_bucket = None
             self.s3_path_prefix = None
             if self.remote_variables_dir is not None and \
-                    self.remote_variables_dir.startswith('s3://'):
+                        self.remote_variables_dir.startswith('s3://'):
                 path_parts = self.remote_variables_dir.replace('s3://', '').split('/')
                 self.s3_bucket = path_parts.pop(0)
                 self.s3_path_prefix = '/'.join(path_parts)
 
-            self.logging_config = repo_config.get('logging_config', dict())
+            self.logging_config = repo_config.get('logging_config', {})
 
             self.variables_retention_period = repo_config.get(
                 'variables_retention_period',
@@ -85,13 +81,11 @@ class RepoConfig:
             )
         except Exception:
             traceback.print_exc()
-            pass
 
     @classmethod
-    def from_dict(self, config_dict: Dict) -> 'RepoConfig':
+    def from_dict(cls, config_dict: Dict) -> 'RepoConfig':
         repo_path = config_dict.get('repo_path')
-        repo_config = RepoConfig(repo_path=repo_path, config_dict=config_dict)
-        return repo_config
+        return RepoConfig(repo_path=repo_path, config_dict=config_dict)
 
     def to_dict(self, remote: bool = False) -> Dict:
         return dict(

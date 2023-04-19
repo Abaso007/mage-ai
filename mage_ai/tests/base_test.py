@@ -20,18 +20,18 @@ else:
             pass
 
         @classmethod
-        def setUpClass(self):
+        def setUpClass(cls):
             super().setUpClass()
-            self.repo_path = os.getcwd() + '/test'
-            set_repo_path(self.repo_path)
-            if not os.path.exists(self.repo_path):
-                os.mkdir(self.repo_path)
+            cls.repo_path = f'{os.getcwd()}/test'
+            set_repo_path(cls.repo_path)
+            if not os.path.exists(cls.repo_path):
+                os.mkdir(cls.repo_path)
             database_manager.run_migrations(log_level=LoggingLevel.ERROR)
             db_connection.start_session()
 
         @classmethod
-        def tearDownClass(self):
-            shutil.rmtree(self.repo_path)
+        def tearDownClass(cls):
+            shutil.rmtree(cls.repo_path)
             db_connection.close_session()
 
             if os.path.isfile(TEST_DB):
@@ -48,18 +48,18 @@ class DBTestCase(unittest.TestCase):
         pass
 
     @classmethod
-    def setUpClass(self):
+    def setUpClass(cls):
         super().setUpClass()
-        self.repo_path = os.getcwd() + '/test'
-        set_repo_path(self.repo_path)
-        if not os.path.exists(self.repo_path):
-            os.mkdir(self.repo_path)
+        cls.repo_path = f'{os.getcwd()}/test'
+        set_repo_path(cls.repo_path)
+        if not os.path.exists(cls.repo_path):
+            os.mkdir(cls.repo_path)
         database_manager.run_migrations(log_level=LoggingLevel.ERROR)
         db_connection.start_session()
 
     @classmethod
-    def tearDownClass(self):
-        shutil.rmtree(self.repo_path)
+    def tearDownClass(cls):
+        shutil.rmtree(cls.repo_path)
         db_connection.close_session()
 
         if os.path.isfile(TEST_DB):

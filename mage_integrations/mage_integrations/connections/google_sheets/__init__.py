@@ -67,12 +67,15 @@ class GoogleSheets(Connection):
     ):
         service = self.connect()
 
-        sheet_kwargs = dict()
+        sheet_kwargs = {}
         if sheet_title is not None:
             sheet_kwargs['includeGridData'] = True
             sheet_kwargs['ranges'] = f"'{sheet_title}'!1:2"
-        response = service.spreadsheets().get(
-            spreadsheetId=spreadsheet_id,
-            **sheet_kwargs,
-        ).execute()
-        return response
+        return (
+            service.spreadsheets()
+            .get(
+                spreadsheetId=spreadsheet_id,
+                **sheet_kwargs,
+            )
+            .execute()
+        )

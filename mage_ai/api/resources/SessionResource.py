@@ -12,7 +12,7 @@ from mage_ai.settings import AUTHENTICATION_MODE
 class SessionResource(BaseResource):
     @classmethod
     @safe_db_query
-    def create(self, payload, _, **kwargs):
+    def create(cls, payload, _, **kwargs):
         email = payload.get('email')
         password = payload.get('password')
         username = payload.get('username')
@@ -49,7 +49,7 @@ class SessionResource(BaseResource):
                     username=email,
                 )
             oauth_token = generate_access_token(user, kwargs['oauth_client'])
-            return self(oauth_token, user, **kwargs)
+            return cls(oauth_token, user, **kwargs)
 
         if email:
             user = User.query.filter(User.email == email).first()
@@ -58,16 +58,15 @@ class SessionResource(BaseResource):
         if not user:
             raise ApiError(error)
 
-        if verify_password(password, user.password_hash):
-            oauth_token = generate_access_token(user, kwargs['oauth_client'])
-            return self(oauth_token, user, **kwargs)
-        else:
+        if not verify_password(password, user.password_hash):
             raise ApiError(error)
+        oauth_token = generate_access_token(user, kwargs['oauth_client'])
+        return cls(oauth_token, user, **kwargs)
 
     @classmethod
     @safe_db_query
-    def member(self, pk, user, **kwargs):
-        return self(kwargs['oauth_token'], user, **kwargs)
+    def member(cls, pk, user, **kwargs):
+        return cls(kwargs['oauth_token'], user, **kwargs)
 
     @safe_db_query
     def update(self, payload, **kwargs):
