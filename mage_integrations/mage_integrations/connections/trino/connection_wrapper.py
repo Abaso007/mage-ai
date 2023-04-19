@@ -13,9 +13,11 @@ class Cursor(CursorParent):
 class ConnectionWrapper(Connection):
     def cursor(self, legacy_primitive_types: bool = None):
         """Return a new :py:class:`Cursor` object using the connection."""
-        if self.isolation_level != IsolationLevel.AUTOCOMMIT:
-            if self.transaction is None:
-                self.start_transaction()
+        if (
+            self.isolation_level != IsolationLevel.AUTOCOMMIT
+            and self.transaction is None
+        ):
+            self.start_transaction()
         if self.transaction is not None:
             request = self.transaction.request
         else:

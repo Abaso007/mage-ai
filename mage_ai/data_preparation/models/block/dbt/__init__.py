@@ -48,8 +48,7 @@ class DBTBlock(Block):
 
             targets = []
             profiles = await load_profiles_async(project_name, profiles_full_path)
-            outputs = profiles.get('outputs')
-            if outputs:
+            if outputs := profiles.get('outputs'):
                 targets += sorted(list(outputs.keys()))
 
             projects[project_name] = dict(
@@ -65,8 +64,7 @@ class DBTBlock(Block):
                 profiles_full_path = os.path.join(dbt_dir, project_name, 'profiles.yml')
                 targets = []
                 profiles = await load_profiles_async(project_name, profiles_full_path)
-                outputs = profiles.get('outputs')
-                if outputs:
+                if outputs := profiles.get('outputs'):
                     targets += sorted(list(outputs.keys()))
 
                 projects[project_name] = dict(
@@ -110,10 +108,10 @@ class DBTBlock(Block):
         variables = merge_dict(global_vars, runtime_arguments or {})
 
         if run_settings:
-            test_execution = not (
-                run_settings.get('build_model', False) or
-                run_settings.get('run_model', False) or
-                run_settings.get('test_model', False)
+            test_execution = (
+                not run_settings.get('build_model', False)
+                and not run_settings.get('run_model', False)
+                and not run_settings.get('test_model', False)
             )
 
         dbt_command, args, command_line_dict = build_command_line_arguments(
@@ -153,8 +151,6 @@ class DBTBlock(Block):
             dbt_command,
         ] + args
 
-        outputs = []
-
         args_pairs = []
         args_pair = []
         for a in args:
@@ -170,6 +166,7 @@ class DBTBlock(Block):
 
         print(f'dbt {dbt_command} \\\n{args_string}\n')
 
+        outputs = []
         if is_sql and test_execution:
             subprocess.run(
                 cmds,
@@ -210,16 +207,21 @@ class DBTBlock(Block):
                     print(f'\n{json.dumps(run_results, indent=2)}\n')
 
                     for result in run_results['results']:
-                        if 'error' == result['status']:
+                        if result['status'] == 'error':
                             raise Exception(result['message'])
                 except json.decoder.JSONDecodeError:
                     print(f'WARNING: no run results found at {run_results_file_path}.')
 
             if is_sql and dbt_command in ['build', 'run']:
                 limit = 1000
-                if self.downstream_blocks and \
-                        len(self.downstream_blocks) >= 1 and \
-                        not all([BlockType.DBT == block.type for block in self.downstream_blocks]):
+                if (
+                    self.downstream_blocks
+                    and len(self.downstream_blocks) >= 1
+                    and any(
+                        BlockType.DBT != block.type
+                        for block in self.downstream_blocks
+                    )
+                ):
                     limit = None
 
                 df = fetch_model_data(

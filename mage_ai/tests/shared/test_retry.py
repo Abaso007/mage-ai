@@ -9,7 +9,6 @@ class RetryTests(TestCase):
         @retry(retries=3, max_delay=40)
         def test_func():
             raise Exception('error')
-            return
 
         with self.assertRaises(Exception):
             test_func()

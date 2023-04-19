@@ -7,12 +7,9 @@ from unittest.mock import MagicMock, patch
 
 class ExecutionProcessManagerTests(DBTestCase):
     @classmethod
-    def setUpClass(self):
+    def setUpClass(cls):
         super().setUpClass()
-        self.pipeline = create_pipeline_with_blocks(
-            'test pipeline',
-            self.repo_path,
-        )
+        cls.pipeline = create_pipeline_with_blocks('test pipeline', cls.repo_path)
 
     def test_has_pipeline_process(self):
         manager = ExecutionProcessManager()

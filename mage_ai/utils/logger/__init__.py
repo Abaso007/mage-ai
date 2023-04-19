@@ -54,15 +54,17 @@ class Logger():
         else:
             caller_string = self.__class__.__name__
 
-        data = dict(
-            caller=caller_string,
-            level=level,
-            message=message,
-            tags=tags,
-            timestamp=int(now.timestamp()),
-            uuid=uuid.uuid4().hex,
+        data = (
+            dict(
+                caller=caller_string,
+                level=level,
+                message=message,
+                tags=tags,
+                timestamp=int(now.timestamp()),
+                uuid=uuid.uuid4().hex,
+            )
+            | kwargs
         )
-        data.update(kwargs)
         data.update(type=TYPE_LOG)
 
         json_string = simplejson.dumps(

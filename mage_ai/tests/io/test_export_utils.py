@@ -19,8 +19,10 @@ class TypeConversionTests(TestCase):
                     fake.text(max_nb_chars=100),
                     np.random.randint(4, 10) / 2,
                     np.random.randn() * 100 + 20,
-                    True if np.random.uniform() > 0.3 else False,
-                    np.random.choice(['Mage', 'Data Cleaning', 'Magic', 'Awesome']),
+                    np.random.uniform() > 0.3,
+                    np.random.choice(
+                        ['Mage', 'Data Cleaning', 'Magic', 'Awesome']
+                    ),
                     np.random.randint(-100, 100),
                     np.random.randint(0, 3),
                     fake.date_this_century(),

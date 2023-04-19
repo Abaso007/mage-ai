@@ -37,15 +37,11 @@ class TerminalWebsocketServer(terminado.TermSocket):
 
         user = None
         if REQUIRE_USER_AUTHENTICATION and api_key and token:
-            oauth_client = Oauth2Application.query.filter(
+            if oauth_client := Oauth2Application.query.filter(
                 Oauth2Application.client_id == api_key,
-            ).first()
-            if oauth_client:
+            ).first():
                 oauth_token, valid = authenticate_client_and_token(oauth_client.id, token)
-                valid = valid and \
-                    oauth_token and \
-                    oauth_token.user
-                if valid:
+                if valid := valid and oauth_token and oauth_token.user:
                     user = oauth_token.user
 
         self.term_name = "tty"
@@ -64,9 +60,7 @@ class TerminalWebsocketServer(terminado.TermSocket):
         # Now drain the preopen buffer, if reconnect.
         buffered = ""
         preopen_buffer = terminal.read_buffer.copy()
-        while True:
-            if not preopen_buffer:
-                break
+        while preopen_buffer:
             s = preopen_buffer.popleft()
             buffered += s
         if buffered:

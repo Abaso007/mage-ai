@@ -51,7 +51,7 @@ class BlockExecutor:
         if template_runtime_configuration:
             self.block.template_runtime_configuration = template_runtime_configuration
         try:
-            result = dict()
+            result = {}
 
             tags = self._build_tags(**kwargs)
 
@@ -59,7 +59,7 @@ class BlockExecutor:
             if on_start is not None:
                 on_start(self.block_uuid)
             pipeline_run = PipelineRun.query.get(kwargs['pipeline_run_id']) \
-                if 'pipeline_run_id' in kwargs else None
+                    if 'pipeline_run_id' in kwargs else None
             try:
                 result = self._execute(
                     analyze_outputs=analyze_outputs,

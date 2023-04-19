@@ -37,7 +37,7 @@ class KinesisSource(BaseSource):
             batch_size = DEFAULT_BATCH_SIZE
 
         try:
-            shard_iterators = dict()
+            shard_iterators = {}
             for shard_id in self.details['Shards']:
                 shard_id = shard_id['ShardId']
                 iterator_kwargs = dict(
@@ -70,8 +70,7 @@ class KinesisSource(BaseSource):
                         closed_streams.add(shard_id)
                         continue
                     shard_iterators[shard_id] = response['NextShardIterator']
-                    records = response['Records']
-                    if records:
+                    if records := response['Records']:
                         self._print(f'Got {len(records)} records from shard {shard_id}. '
                                     f'Sample: {records[0]}')
                         handler([json.loads(r['Data'].decode('utf-8')) for r in records])

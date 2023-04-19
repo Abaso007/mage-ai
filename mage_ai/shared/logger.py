@@ -23,10 +23,10 @@ class timer(object):
         self.start = time.time()
 
     def __exit__(self, type, value, traceback):
-        # Must convert to milliseconds, see details in
-        # https://statsd.readthedocs.io/en/v3.1/timing.html
-        dt = int((time.time() - self.start) * 1000)
         if self.verbose:
+            # Must convert to milliseconds, see details in
+            # https://statsd.readthedocs.io/en/v3.1/timing.html
+            dt = int((time.time() - self.start) * 1000)
             logger.debug(f'[time] metric: {self.metric}, value: {dt}ms, tags: {self.tags}')
 
 

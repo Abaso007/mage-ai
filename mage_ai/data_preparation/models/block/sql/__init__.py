@@ -73,11 +73,7 @@ def execute_sql_code(
     )
 
     limit = int(configuration.get('limit') or QUERY_ROW_LIMIT)
-    if test_execution:
-        limit = min(limit, QUERY_ROW_LIMIT)
-    else:
-        limit = QUERY_ROW_LIMIT
-
+    limit = min(limit, QUERY_ROW_LIMIT) if test_execution else QUERY_ROW_LIMIT
     if DataSource.BIGQUERY.value == data_provider:
         from mage_ai.io.bigquery import BigQuery
 
@@ -103,36 +99,33 @@ def execute_sql_code(
                 configuration=configuration,
                 should_query=should_query,
             )
-        else:
-            loader.export(
-                None,
-                f'{schema}.{table_name}',
-                database=database,
-                if_exists=export_write_policy,
-                query_string=query_string,
-                verbose=BlockType.DATA_EXPORTER == block.type,
-            )
+        loader.export(
+            None,
+            f'{schema}.{table_name}',
+            database=database,
+            if_exists=export_write_policy,
+            query_string=query_string,
+            verbose=BlockType.DATA_EXPORTER == block.type,
+        )
 
-            if should_query:
-                """
+        if should_query:
+            """
                 An error is thrown because the table doesn’t exist until you re-run the query
                 NotFound: 404 Not found: Table database:schema.table_name
                     was not found in location XX
                 """
-                tries = 0
-                while tries < 10:
-                    sleep(tries)
-                    tries += 1
-                    try:
-                        result = loader.load(
-                            f'SELECT * FROM {database}.{schema}.{table_name}',
-                            limit=limit,
-                            verbose=False,
-                        )
-                        return [result]
-                    except Exception as err:
-                        if '404' not in str(err):
-                            raise err
+            for tries in range(10):
+                sleep(tries)
+                try:
+                    result = loader.load(
+                        f'SELECT * FROM {database}.{schema}.{table_name}',
+                        limit=limit,
+                        verbose=False,
+                    )
+                    return [result]
+                except Exception as err:
+                    if '404' not in str(err):
+                        raise err
     elif DataSource.CLICKHOUSE.value == data_provider:
         from mage_ai.io.clickhouse import ClickHouse
 
@@ -159,22 +152,21 @@ def execute_sql_code(
                 configuration=configuration,
                 should_query=should_query,
             )
-        else:
-            loader.export(
-                None,
-                table_name=table_name,
-                database=database,
-                query_string=query_string,
-                **kwargs_shared,
-            )
+        loader.export(
+            None,
+            table_name=table_name,
+            database=database,
+            query_string=query_string,
+            **kwargs_shared,
+        )
 
-            if should_query:
-                return [
-                    loader.load(
-                        f'SELECT * FROM {database}.{table_name}',
-                        verbose=False,
-                    ),
-                ]
+        if should_query:
+            return [
+                loader.load(
+                    f'SELECT * FROM {database}.{table_name}',
+                    verbose=False,
+                ),
+            ]
     elif DataSource.MSSQL.value == data_provider:
         from mage_ai.io.mssql import MSSQL
 
@@ -198,26 +190,25 @@ def execute_sql_code(
                     configuration=configuration,
                     should_query=should_query,
                 )
-            else:
-                loader.export(
-                    None,
-                    None,
-                    table_name,
-                    query_string=query_string,
-                    drop_table_on_replace=True,
-                    if_exists=export_write_policy,
-                    index=False,
-                    verbose=BlockType.DATA_EXPORTER == block.type,
-                )
+            loader.export(
+                None,
+                None,
+                table_name,
+                query_string=query_string,
+                drop_table_on_replace=True,
+                if_exists=export_write_policy,
+                index=False,
+                verbose=BlockType.DATA_EXPORTER == block.type,
+            )
 
-                if should_query:
-                    return [
-                        loader.load(
-                            f'SELECT * FROM {table_name}',
-                            limit=limit,
-                            verbose=False,
-                        ),
-                    ]
+            if should_query:
+                return [
+                    loader.load(
+                        f'SELECT * FROM {table_name}',
+                        limit=limit,
+                        verbose=False,
+                    ),
+                ]
     elif DataSource.MYSQL.value == data_provider:
         from mage_ai.io.mysql import MySQL
 
@@ -241,23 +232,22 @@ def execute_sql_code(
                     configuration=configuration,
                     should_query=should_query,
                 )
-            else:
-                loader.export(
-                    None,
-                    None,
-                    table_name,
-                    query_string=query_string,
-                    **kwargs_shared,
-                )
+            loader.export(
+                None,
+                None,
+                table_name,
+                query_string=query_string,
+                **kwargs_shared,
+            )
 
-                if should_query:
-                    return [
-                        loader.load(
-                            f'SELECT * FROM {table_name}',
-                            limit=limit,
-                            verbose=False,
-                        ),
-                    ]
+            if should_query:
+                return [
+                    loader.load(
+                        f'SELECT * FROM {table_name}',
+                        limit=limit,
+                        verbose=False,
+                    ),
+                ]
     elif DataSource.POSTGRES.value == data_provider:
         from mage_ai.io.postgres import Postgres
 
@@ -283,23 +273,22 @@ def execute_sql_code(
                     configuration=configuration,
                     should_query=should_query,
                 )
-            else:
-                loader.export(
-                    None,
-                    schema,
-                    table_name,
-                    query_string=query_string,
-                    **kwargs_shared,
-                )
+            loader.export(
+                None,
+                schema,
+                table_name,
+                query_string=query_string,
+                **kwargs_shared,
+            )
 
-                if should_query:
-                    return [
-                        loader.load(
-                            f'SELECT * FROM {schema}.{table_name}',
-                            limit=limit,
-                            verbose=False,
-                        ),
-                    ]
+            if should_query:
+                return [
+                    loader.load(
+                        f'SELECT * FROM {schema}.{table_name}',
+                        limit=limit,
+                        verbose=False,
+                    ),
+                ]
     elif DataSource.REDSHIFT.value == data_provider:
         from mage_ai.io.redshift import Redshift
 
@@ -326,23 +315,22 @@ def execute_sql_code(
                     configuration=configuration,
                     should_query=should_query,
                 )
-            else:
-                loader.export(
-                    None,
-                    table_name,
-                    schema=schema,
-                    query_string=query_string,
-                    **kwargs_shared,
-                )
+            loader.export(
+                None,
+                table_name,
+                schema=schema,
+                query_string=query_string,
+                **kwargs_shared,
+            )
 
-                if should_query:
-                    return [
-                            loader.load(
-                                f'SELECT * FROM {schema}.{table_name}',
-                                limit=limit,
-                                verbose=False,
-                            ),
-                        ]
+            if should_query:
+                return [
+                        loader.load(
+                            f'SELECT * FROM {schema}.{table_name}',
+                            limit=limit,
+                            verbose=False,
+                        ),
+                    ]
     elif DataSource.SNOWFLAKE.value == data_provider:
         from mage_ai.io.snowflake import Snowflake
 
@@ -374,28 +362,27 @@ def execute_sql_code(
                     configuration=configuration,
                     should_query=should_query,
                 )
-            else:
-                loader.export(
-                    None,
-                    table_name,
-                    database,
-                    schema,
-                    if_exists=export_write_policy,
-                    query_string=query_string,
-                    verbose=BlockType.DATA_EXPORTER == block.type,
-                )
+            loader.export(
+                None,
+                table_name,
+                database,
+                schema,
+                if_exists=export_write_policy,
+                query_string=query_string,
+                verbose=BlockType.DATA_EXPORTER == block.type,
+            )
 
-                if should_query:
-                    return [
-                        loader.load(
-                            f'SELECT * FROM "{database}"."{schema}"."{table_name}"',
-                            database=database,
-                            schema=schema,
-                            table_name=table_name,
-                            limit=limit,
-                            verbose=False,
-                        ),
-                    ]
+            if should_query:
+                return [
+                    loader.load(
+                        f'SELECT * FROM "{database}"."{schema}"."{table_name}"',
+                        database=database,
+                        schema=schema,
+                        table_name=table_name,
+                        limit=limit,
+                        verbose=False,
+                    ),
+                ]
     elif DataSource.TRINO.value == data_provider:
         from mage_ai.io.trino import Trino
 
@@ -422,32 +409,31 @@ def execute_sql_code(
                     configuration=configuration,
                     should_query=should_query,
                 )
-            else:
-                loader.export(
-                    None,
+            loader.export(
+                None,
+                schema,
+                table_name,
+                drop_table_on_replace=True,
+                if_exists=export_write_policy,
+                query_string=query_string,
+                verbose=BlockType.DATA_EXPORTER == block.type,
+            )
+
+            if should_query:
+                names = list(filter(lambda x: x, [
+                    database,
                     schema,
                     table_name,
-                    drop_table_on_replace=True,
-                    if_exists=export_write_policy,
-                    query_string=query_string,
-                    verbose=BlockType.DATA_EXPORTER == block.type,
-                )
+                ]))
+                full_table_name = '.'.join([f'"{n}"' for n in names])
 
-                if should_query:
-                    names = list(filter(lambda x: x, [
-                        database,
-                        schema,
-                        table_name,
-                    ]))
-                    full_table_name = '.'.join([f'"{n}"' for n in names])
-
-                    return [
-                        loader.load(
-                            f'SELECT * FROM {full_table_name}',
-                            limit=limit,
-                            verbose=False,
-                        ),
-                    ]
+                return [
+                    loader.load(
+                        f'SELECT * FROM {full_table_name}',
+                        limit=limit,
+                        verbose=False,
+                    ),
+                ]
 
 
 def split_query_string(query_string: str) -> List[str]:
@@ -457,15 +443,14 @@ def split_query_string(query_string: str) -> List[str]:
 
     previous_idx = 0
 
-    for idx, match in enumerate(matches):
+    for match in matches:
         matched_string = match.group()
         updated_string = re.sub(r';', MAGE_SEMI_COLON, matched_string)
 
         start_idx, end_idx = match.span()
 
         previous_chunk = query_string[previous_idx:start_idx]
-        text_parts.append(previous_chunk)
-        text_parts.append(updated_string)
+        text_parts.extend((previous_chunk, updated_string))
         previous_idx = end_idx
 
     text_parts.append(query_string[previous_idx:])
@@ -482,9 +467,7 @@ def split_query_string(query_string: str) -> List[str]:
         lines = query.split('\n')
         query = '\n'.join(list(filter(lambda x: not x.startswith('--'), lines)))
         query = query.strip()
-        query = re.sub(MAGE_SEMI_COLON, ';', query)
-
-        if query:
+        if query := re.sub(MAGE_SEMI_COLON, ';', query):
             arr.append(query)
 
     return arr
@@ -504,12 +487,11 @@ def execute_raw_sql(
 
     for query in split_query_string(query_string):
         if has_create_or_insert:
-            queries.append(query)
             fetch_query_at_indexes.append(False)
         else:
-            queries.append(query)
             fetch_query_at_indexes.append(True)
 
+        queries.append(query)
     if should_query and has_create_or_insert:
         queries.append(f'SELECT * FROM {block.full_table_name} LIMIT 1000')
         fetch_query_at_indexes.append(block.full_table_name)
@@ -520,10 +502,7 @@ def execute_raw_sql(
         fetch_query_at_indexes=fetch_query_at_indexes,
     )
 
-    if should_query:
-        return [results[-1]]
-
-    return []
+    return [results[-1]] if should_query else []
 
 
 class SQLBlock(Block):

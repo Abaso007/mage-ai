@@ -15,11 +15,10 @@ faker = Faker()
 
 
 def create_pipeline(name: str, repo_path: str):
-    pipeline = Pipeline.create(
+    return Pipeline.create(
         name,
         repo_path=repo_path,
     )
-    return pipeline
 
 
 def create_pipeline_with_blocks(name: str, repo_path: str):
@@ -61,8 +60,7 @@ def create_pipeline_with_dynamic_blocks(name: str, repo_path: str):
 
 
 def create_pipeline_run(pipeline_uuid: str):
-    pipeline_run = PipelineRun.create(pipeline_uuid='test_pipeline')
-    return pipeline_run
+    return PipelineRun.create(pipeline_uuid='test_pipeline')
 
 
 def create_pipeline_run_with_schedule(
@@ -77,12 +75,11 @@ def create_pipeline_run_with_schedule(
             settings=pipeline_schedule_settings,
         )
         pipeline_schedule_id = pipeline_schedule.id
-    pipeline_run = PipelineRun.create(
+    return PipelineRun.create(
         execution_date=execution_date,
         pipeline_uuid=pipeline_uuid,
         pipeline_schedule_id=pipeline_schedule_id,
     )
-    return pipeline_run
 
 
 def create_user(

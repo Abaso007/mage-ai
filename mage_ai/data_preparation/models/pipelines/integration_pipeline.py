@@ -72,8 +72,7 @@ class IntegrationPipeline(Pipeline):
             if self.destination_uuid:
                 mod1 = importlib.import_module('mage_integrations.destinations')
                 absolute_path = '/'.join(mod1.__file__.split('/')[:-1])
-                absolute_path = f'{absolute_path}/{self.destination_uuid}/__init__.py'
-                return absolute_path
+                return f'{absolute_path}/{self.destination_uuid}/__init__.py'
 
     @property
     def source_config(self) -> Dict:
@@ -106,8 +105,7 @@ class IntegrationPipeline(Pipeline):
             if self.source_uuid:
                 mod1 = importlib.import_module('mage_integrations.sources')
                 absolute_path = '/'.join(mod1.__file__.split('/')[:-1])
-                absolute_path = f'{absolute_path}/{self.source_uuid}/__init__.py'
-                return absolute_path
+                return f'{absolute_path}/{self.source_uuid}/__init__.py'
 
     @property
     def settings_file_path(self) -> str:
@@ -215,8 +213,8 @@ class IntegrationPipeline(Pipeline):
         streams_updated = set()
         try:
             streams = streams if streams else \
-                list(map(lambda s: s['tap_stream_id'], self.streams()))
-            if file_path and len(streams) > 0:
+                    list(map(lambda s: s['tap_stream_id'], self.streams()))
+            if file_path and streams:
                 run_args = [
                     PYTHON,
                     file_path,
@@ -270,12 +268,12 @@ class IntegrationPipeline(Pipeline):
                 if line.startswith('ERROR'):
                     json_object = next(extract_json_objects(line))
 
-            error = dig(json_object, 'tags.error')
-            if not error:
+            if error := dig(json_object, 'tags.error'):
+                raise Exception(error)
+            else:
                 raise Exception('The sample data was not able to be loaded. Please check \
                                 if the stream still exists. If it does not, click the "View and \
                                 select streams" button and confirm the valid streams.')
-            raise Exception(error)
 
     def count_records(self) -> List[Dict]:
         arr = []
@@ -369,6 +367,6 @@ class IntegrationPipeline(Pipeline):
         )
 
     def __global_variables(self, variables: Dict = {}) -> Dict:
-        d = get_global_variables(self.uuid) or dict()
+        d = get_global_variables(self.uuid) or {}
         d.update(variables)
         return d

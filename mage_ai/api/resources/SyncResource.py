@@ -27,18 +27,14 @@ def get_ssh_private_key_secret_name(user: User = None) -> str:
 
 class SyncResource(GenericResource):
     @classmethod
-    def collection(self, query, meta, user, **kwargs):
+    def collection(cls, query, meta, user, **kwargs):
         preferences = get_preferences(user=user)
         sync_config = preferences.sync_config
-        return self.build_result_set(
-            [sync_config],
-            user,
-            **kwargs,
-        )
+        return cls.build_result_set([sync_config], user, **kwargs)
 
     @classmethod
     @safe_db_query
-    def create(self, payload, user, **kwargs):
+    def create(cls, payload, user, **kwargs):
         ssh_public_key = payload.get('ssh_public_key')
         ssh_private_key = payload.get('ssh_private_key')
 
@@ -47,17 +43,17 @@ class SyncResource(GenericResource):
 
         if ssh_public_key:
             secret_name = get_ssh_public_key_secret_name(user=user)
-            secret = Secret.query.filter(
-                Secret.name == secret_name).one_or_none()
-            if secret:
+            if secret := Secret.query.filter(
+                Secret.name == secret_name
+            ).one_or_none():
                 secret.delete()
             create_secret(secret_name, ssh_public_key)
             payload['ssh_public_key_secret_name'] = secret_name
         if ssh_private_key:
             secret_name = get_ssh_private_key_secret_name(user=user)
-            secret = Secret.query.filter(
-                Secret.name == secret_name).one_or_none()
-            if secret:
+            if secret := Secret.query.filter(
+                Secret.name == secret_name
+            ).one_or_none():
                 secret.delete()
             create_secret(secret_name, ssh_private_key)
             payload['ssh_private_key_secret_name'] = secret_name
@@ -71,11 +67,11 @@ class SyncResource(GenericResource):
 
         GitSync(sync_config)
 
-        return self(get_preferences(user=user).sync_config, user, **kwargs)
+        return cls(get_preferences(user=user).sync_config, user, **kwargs)
 
     @classmethod
-    def member(self, pk, user, **kwargs):
-        return self(get_preferences(user=user).sync_config, user, **kwargs)
+    def member(cls, pk, user, **kwargs):
+        return cls(get_preferences(user=user).sync_config, user, **kwargs)
 
     def update(self, payload, **kwargs):
         config = GitConfig.load(config=self.model)

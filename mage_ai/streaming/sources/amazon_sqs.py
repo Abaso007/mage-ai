@@ -18,7 +18,7 @@ class AmazonSqsConfig(BaseConfig):
     serde_config: SerDeConfig = None
 
     @classmethod
-    def parse_config(self, config: Dict) -> Dict:
+    def parse_config(cls, config: Dict) -> Dict:
         serde_config = config.get('serde_config')
         if serde_config and type(serde_config) is dict:
             config['serde_config'] = SerDeConfig(**serde_config)
@@ -60,7 +60,7 @@ class AmazonSqsSource(BaseSource):
                 for msg in messages:
                     parsed_messages.append(self.__deserialize_message(msg.body))
                     msg.delete()
-                if len(parsed_messages) > 0:
+                if parsed_messages:
                     self._print(f'Received {len(parsed_messages)} message. '
                                 f'Sample: {parsed_messages[0]}.')
                     handler(parsed_messages)

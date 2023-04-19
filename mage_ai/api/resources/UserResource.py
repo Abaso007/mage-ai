@@ -16,7 +16,7 @@ class UserResource(DatabaseResource):
 
     @classmethod
     @safe_db_query
-    def create(self, payload, user, **kwargs):
+    def create(cls, payload, user, **kwargs):
         email = payload.get('email')
         password = payload.get('password')
         password_confirmation = payload.get('password_confirmation')
@@ -24,14 +24,14 @@ class UserResource(DatabaseResource):
 
         error = ApiError.RESOURCE_INVALID.copy()
 
-        missing_values = []
-        for key in ['email', 'password']:
-            if not payload.get(key):
-                missing_values.append(key)
-
-        if len(missing_values) >= 1:
+        if missing_values := [
+            key for key in ['email', 'password'] if not payload.get(key)
+        ]:
             error.update(
-                {'message': 'Missing required values: {}.'.format(', '.join(missing_values))})
+                {
+                    'message': f"Missing required values: {', '.join(missing_values)}."
+                }
+            )
             raise ApiError(error)
 
         if email:
@@ -82,22 +82,24 @@ class UserResource(DatabaseResource):
 
     @safe_db_query
     def update(self, payload, **kwargs):
-        password = payload.get('password')
-
-        if password:
+        if password := payload.get('password'):
             password_current = payload.get('password_current')
             password_confirmation = payload.get('password_confirmation')
 
             error = ApiError.RESOURCE_INVALID.copy()
 
-            if self.current_user.id == self.id or not self.current_user.owner:
-                if not password_current or not verify_password(
+            if (
+                self.current_user.id == self.id or not self.current_user.owner
+            ) and (
+                not password_current
+                or not verify_password(
                     password_current,
                     self.password_hash,
-                ):
-                    error.update(
-                        {'message': 'Current password is incorrect.'})
-                    raise ApiError(error)
+                )
+            ):
+                error.update(
+                    {'message': 'Current password is incorrect.'})
+                raise ApiError(error)
 
             if len(password) < 8:
                 error.update(
@@ -121,6 +123,5 @@ class UserResource(DatabaseResource):
 
     @safe_db_query
     def token(self):
-        oauth_token = self.model_options.get('oauth_token')
-        if oauth_token:
+        if oauth_token := self.model_options.get('oauth_token'):
             return encode_token(oauth_token.token, oauth_token.expires)

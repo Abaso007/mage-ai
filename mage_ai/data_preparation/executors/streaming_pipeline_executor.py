@@ -62,7 +62,7 @@ class StreamingPipelineExecutor(PipelineExecutor):
 
         self.source_block = source_blocks[0]
         self.sink_block = sink_blocks[0]
-        self.transformer_block = transformer_blocks[0] if len(transformer_blocks) > 0 else None
+        self.transformer_block = transformer_blocks[0] if transformer_blocks else None
 
     def execute(
         self,

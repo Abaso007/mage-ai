@@ -16,9 +16,9 @@ class Preferences:
     ):
         self.repo_path = repo_path or get_repo_path()
         self.preferences_file_path = \
-            os.path.join(self.repo_path, PREFERENCES_FILE)
+                os.path.join(self.repo_path, PREFERENCES_FILE)
         self.user = user
-        preferences = dict()
+        preferences = {}
         try:
             if user:
                 preferences = user.preferences or {}
@@ -30,9 +30,7 @@ class Preferences:
 
         except Exception:
             traceback.print_exc()
-            pass
-
-        self.sync_config = preferences.get('sync_config', dict())
+        self.sync_config = preferences.get('sync_config', {})
 
     def is_valid_git_config(self) -> bool:
         return 'remote_repo_link' in self.sync_config and 'repo_path' in self.sync_config
@@ -54,11 +52,10 @@ class Preferences:
 
 def get_preferences(repo_path=None, user: User = None) -> Preferences:
     default_preferences = Preferences(repo_path=repo_path)
-    if user:
-        if user.preferences is None \
-                and os.path.exists(default_preferences.preferences_file_path):
-            return default_preferences
-        else:
-            return Preferences(user=user)
-    else:
+    if not user:
         return default_preferences
+    if user.preferences is None \
+            and os.path.exists(default_preferences.preferences_file_path):
+        return default_preferences
+    else:
+        return Preferences(user=user)

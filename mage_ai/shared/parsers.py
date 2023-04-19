@@ -72,7 +72,7 @@ def sample_output(obj):
         return obj[:MAX_ITEMS_IN_SAMPLE_OUTPUT], sampled
     elif isinstance(obj, dict):
         sampled = False
-        output = dict()
+        output = {}
         for k, v in obj.items():
             v, v_sampled = sample_output(v)
             if v_sampled:

@@ -67,9 +67,6 @@ class GreatExpectations():
                     name=datasource_name,
                 )
 
-            elif BlockLanguage.SQL == self.block.language:
-                pass
-
             context.add_datasource(**datasource_config)
             context.add_or_update_expectation_suite(expectation_suite_name=expectation_suite_name)
             validator = context.get_validator(

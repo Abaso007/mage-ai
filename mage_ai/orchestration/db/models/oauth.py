@@ -80,10 +80,8 @@ class Oauth2Application(BaseModel):
 
     @classmethod
     @safe_db_query
-    def query_client(self, api_key: str):
-        return self.query.filter(
-            Oauth2Application.client_id == api_key,
-        ).first()
+    def query_client(cls, api_key: str):
+        return cls.query.filter(Oauth2Application.client_id == api_key).first()
 
 
 class Oauth2AccessToken(BaseModel):

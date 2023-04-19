@@ -157,9 +157,7 @@ class ApiProjectSettingsHandler(BaseHandler):
 def make_app():
     shell_command = SHELL_COMMAND
     if shell_command is None:
-        shell_command = 'bash'
-        if os.name == 'nt':
-            shell_command = 'cmd'
+        shell_command = 'cmd' if os.name == 'nt' else 'bash'
     term_manager = terminado.NamedTermManager(shell_command=[shell_command])
     routes = [
         (r'/', MainPageHandler),
@@ -342,7 +340,6 @@ def start_server(
     manage: bool = False,
     dbt_docs: bool = False,
 ):
-    host = host if host else None
     port = port if port else DATA_PREP_SERVER_PORT
     project = project if project else None
 
@@ -369,6 +366,7 @@ def start_server(
             options.logging = SERVER_VERBOSITY
         enable_pretty_logging()
 
+        host = host if host else None
         # Start web server
         asyncio.run(
             main(

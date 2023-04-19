@@ -80,7 +80,7 @@ class Variable:
         return os.path.join(self.variable_dir_path, f'{self.uuid}')
 
     @classmethod
-    def dir_path(self, pipeline_path, block_uuid):
+    def dir_path(cls, pipeline_path, block_uuid):
         return os.path.join(pipeline_path, VARIABLE_DIR, clean_name(block_uuid))
 
     def check_variable_type(self, spark=None):
@@ -469,14 +469,17 @@ class Variable:
         3. insights.json
         4. suggestions.json
         """
-        if not self.storage.path_exists(self.variable_path):
-            return dict()
-        result = dict()
-        for k in DATAFRAME_ANALYSIS_KEYS:
-            if dataframe_analysis_keys is not None and k not in dataframe_analysis_keys:
-                continue
-            result[k] = self.storage.read_json_file(os.path.join(self.variable_path, f'{k}.json'))
-        return result
+        return (
+            {
+                k: self.storage.read_json_file(
+                    os.path.join(self.variable_path, f'{k}.json')
+                )
+                for k in DATAFRAME_ANALYSIS_KEYS
+                if dataframe_analysis_keys is None or k in dataframe_analysis_keys
+            }
+            if self.storage.path_exists(self.variable_path)
+            else {}
+        )
 
     async def __read_dataframe_analysis_async(
         self,
@@ -490,8 +493,8 @@ class Variable:
         4. suggestions.json
         """
         if not self.storage.path_exists(self.variable_path):
-            return dict()
-        result = dict()
+            return {}
+        result = {}
         for k in DATAFRAME_ANALYSIS_KEYS:
             if dataframe_analysis_keys is not None and k not in dataframe_analysis_keys:
                 continue

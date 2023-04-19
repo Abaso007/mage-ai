@@ -78,13 +78,14 @@ class BaseOperation():
                 response['metadata'] = result.metadata
 
             if settings.DEBUG:
-                debug_payload = {}
-                debug_payload[self.__resource_name_singular()] = merge_dict(
-                    self.payload.get(self.__resource_name_singular(), {}),
-                    {
-                        'file': None,
-                    },
-                )
+                debug_payload = {
+                    self.__resource_name_singular(): merge_dict(
+                        self.payload.get(self.__resource_name_singular(), {}),
+                        {
+                            'file': None,
+                        },
+                    )
+                }
                 response['debug'] = {
                     'action': self.action,
                     'meta': self.meta,
@@ -123,9 +124,9 @@ class BaseOperation():
                     except (UnicodeDecodeError, AttributeError):
                         pass
 
-                    if 'true' == v:
+                    if v == 'true':
                         v = True
-                    elif 'false' == v:
+                    elif v == 'false':
                         v = False
 
                     arr.append(v)
@@ -210,40 +211,45 @@ class BaseOperation():
         try:
             return getattr(
                 importlib.import_module(
-                    'mage_ai.api.monitors.{}Monitor'.format(
-                        self.__classified_class())), '{}Monitor'.format(
-                    self.__classified_class()), )
+                    f'mage_ai.api.monitors.{self.__classified_class()}Monitor'
+                ),
+                f'{self.__classified_class()}Monitor',
+            )
         except ModuleNotFoundError:
             return BaseMonitor
 
     def __policy_class(self):
         return getattr(
             importlib.import_module(
-                'mage_ai.api.policies.{}Policy'.format(
-                    self.__classified_class())), '{}Policy'.format(
-                self.__classified_class()), )
+                f'mage_ai.api.policies.{self.__classified_class()}Policy'
+            ),
+            f'{self.__classified_class()}Policy',
+        )
 
     def __presenter_class(self):
         return getattr(
             importlib.import_module(
-                'mage_ai.api.presenters.{}Presenter'.format(
-                    self.__classified_class())), '{}Presenter'.format(
-                self.__classified_class()), )
+                f'mage_ai.api.presenters.{self.__classified_class()}Presenter'
+            ),
+            f'{self.__classified_class()}Presenter',
+        )
 
     def __resource_class(self):
         return getattr(
             importlib.import_module(
-                'mage_ai.api.resources.{}Resource'.format(
-                    self.__classified_class())), '{}Resource'.format(
-                self.__classified_class()), )
+                f'mage_ai.api.resources.{self.__classified_class()}Resource'
+            ),
+            f'{self.__classified_class()}Resource',
+        )
 
     async def __parent_model(self):
         if self.resource_parent and self.resource_parent_id:
             parent_class = classify(singularize(self.resource_parent))
             parent_resource_class = getattr(
                 importlib.import_module(
-                    'mage_ai.api.resources.{}Resource'.format(parent_class)),
-                '{}Resource'.format(parent_class),
+                    f'mage_ai.api.resources.{parent_class}Resource'
+                ),
+                f'{parent_class}Resource',
             )
             try:
                 model = parent_resource_class.get_model(self.resource_parent_id)
@@ -273,9 +279,8 @@ class BaseOperation():
             payload.update(payload_prev)
 
         for key in self.__resource_class().datetime_keys:
-            if payload.get(key) is not None:
-                if type(payload[key]) is str:
-                    payload[key] = dateutil.parser.parse(payload[key])
+            if payload.get(key) is not None and type(payload[key]) is str:
+                payload[key] = dateutil.parser.parse(payload[key])
 
         return payload
 

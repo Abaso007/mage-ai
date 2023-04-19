@@ -34,9 +34,7 @@ def files_in_path(path, verbose=0):
     files = []
     # r=root, d=directories, f = files
     for r, d, f in os.walk(path):
-        for file in f:
-            files.append(os.path.join(r, file))
-
+        files.extend(os.path.join(r, file) for file in f)
     if verbose >= 1:
         for f in files:
             print(f)
@@ -54,7 +52,7 @@ def files_in_single_path(path):
 
 def convert_pandas_dtype_to_python_type(dtype):
     dtype = str(dtype)
-    if dtype in ['int64', 'integer']:
+    if dtype in {'int64', 'integer'}:
         return int
     elif 'float' in dtype:
         return float

@@ -91,37 +91,39 @@ class BaseActionTests(TestCase):
             'date',
             'sold',
         ])
-        base_action = BaseAction(dict(
-            action_type='group',
-            action_arguments=['store'],
-            action_code='',
-            action_variables=dict(),
-            child_actions=[
-                dict(
-                    action_type='sort',
-                    axis='row',
-                    action_arguments=['date'],
-                    action_code='',
-                    action_variables=dict(),
-                ),
-                dict(
-                    action_type='diff',
-                    action_arguments=['sold'],
-                    action_code='',
-                    action_variables=dict(),
-                    axis='column',
-                    outputs=[dict(uuid='sold_diff')]
-                ),
-                dict(
-                    action_type='shift_down',
-                    action_arguments=['sold'],
-                    action_code='',
-                    action_variables=dict(),
-                    axis='column',
-                    outputs=[dict(uuid='prev_sold')]
-                ),
-            ],
-        ))
+        base_action = BaseAction(
+            dict(
+                action_type='group',
+                action_arguments=['store'],
+                action_code='',
+                action_variables={},
+                child_actions=[
+                    dict(
+                        action_type='sort',
+                        axis='row',
+                        action_arguments=['date'],
+                        action_code='',
+                        action_variables={},
+                    ),
+                    dict(
+                        action_type='diff',
+                        action_arguments=['sold'],
+                        action_code='',
+                        action_variables={},
+                        axis='column',
+                        outputs=[dict(uuid='sold_diff')],
+                    ),
+                    dict(
+                        action_type='shift_down',
+                        action_arguments=['sold'],
+                        action_code='',
+                        action_variables={},
+                        axis='column',
+                        outputs=[dict(uuid='prev_sold')],
+                    ),
+                ],
+            )
+        )
         df_new = base_action.execute(df)
         df_new = df_new.fillna(0)
         self.assertEqual(df_new.values.tolist(), [
@@ -201,18 +203,20 @@ class BaseActionTests(TestCase):
             'store_name',
             'description',
         ])
-        base_action = BaseAction(dict(
-            action_type='join',
-            action_arguments=[100],
-            action_code='',
-            action_options=dict(
-                left_on=['store'],
-                right_on=['store_name'],
-                drop_columns=['store_name'],
-                rename_columns={'description': 'store_description'}
-            ),
-            action_variables=dict(),
-        ))
+        base_action = BaseAction(
+            dict(
+                action_type='join',
+                action_arguments=[100],
+                action_code='',
+                action_options=dict(
+                    left_on=['store'],
+                    right_on=['store_name'],
+                    drop_columns=['store_name'],
+                    rename_columns={'description': 'store_description'},
+                ),
+                action_variables={},
+            )
+        )
         df_new = base_action.execute(df1, df_to_join=df2)
         self.assertEqual(df_new.values.tolist(), [
             ['a', '2020-01-03', 1050, 'Store A'],
@@ -247,38 +251,40 @@ class BaseActionTests(TestCase):
             'description',
             'date',
         ])
-        base_action = BaseAction(dict(
-            action_type='join',
-            action_arguments=[100],
-            action_code='',
-            action_options=dict(
-                left_on=['store'],
-                right_on=['store_name'],
-                drop_columns=['store_name'],
-                rename_columns={'description': 'store_description'}
-            ),
-            action_variables=dict(),
-            outputs=[
-                {
-                    'source_feature': {
+        base_action = BaseAction(
+            dict(
+                action_type='join',
+                action_arguments=[100],
+                action_code='',
+                action_options=dict(
+                    left_on=['store'],
+                    right_on=['store_name'],
+                    drop_columns=['store_name'],
+                    rename_columns={'description': 'store_description'},
+                ),
+                action_variables={},
+                outputs=[
+                    {
+                        'source_feature': {
+                            'uuid': 'store_name',
+                        },
                         'uuid': 'store_name',
                     },
-                    'uuid': 'store_name',
-                },
-                {
-                    'source_feature': {
+                    {
+                        'source_feature': {
+                            'uuid': 'description',
+                        },
                         'uuid': 'description',
                     },
-                    'uuid': 'description',
-                },
-                {
-                    'source_feature': {
-                        'uuid': 'date',
+                    {
+                        'source_feature': {
+                            'uuid': 'date',
+                        },
+                        'uuid': 'date_1',
                     },
-                    'uuid': 'date_1',
-                }
-            ]
-        ))
+                ],
+            )
+        )
         df_new = base_action.execute(df1, df_to_join=df2)
         self.assertEqual(df_new.values.tolist(), [
             ['a', '2020-01-03', 1050, 'Store A', '2020-02-01'],
@@ -313,36 +319,38 @@ class BaseActionTests(TestCase):
             'description',
             'date',
         ])
-        base_action = BaseAction(dict(
-            action_type='join',
-            action_arguments=[100],
-            action_code='',
-            action_options=dict(
-                left_on=['store'],
-                right_on=['store'],
-            ),
-            action_variables=dict(),
-            outputs=[
-                {
-                    'source_feature': {
-                        'uuid': 'store',
+        base_action = BaseAction(
+            dict(
+                action_type='join',
+                action_arguments=[100],
+                action_code='',
+                action_options=dict(
+                    left_on=['store'],
+                    right_on=['store'],
+                ),
+                action_variables={},
+                outputs=[
+                    {
+                        'source_feature': {
+                            'uuid': 'store',
+                        },
+                        'uuid': 'store_1',
                     },
-                    'uuid': 'store_1',
-                },
-                {
-                    'source_feature': {
+                    {
+                        'source_feature': {
+                            'uuid': 'description',
+                        },
                         'uuid': 'description',
                     },
-                    'uuid': 'description',
-                },
-                {
-                    'source_feature': {
-                        'uuid': 'date',
+                    {
+                        'source_feature': {
+                            'uuid': 'date',
+                        },
+                        'uuid': 'date_1',
                     },
-                    'uuid': 'date_1',
-                }
-            ]
-        ))
+                ],
+            )
+        )
         df_new = base_action.execute(df1, df_to_join=df2)
         self.assertEqual(df_new.values.tolist(), [
             ['a', '2020-01-03', 1050, 'a', 'Store A', '2020-02-01'],
@@ -376,18 +384,20 @@ class BaseActionTests(TestCase):
             'store_name',
             'description',
         ])
-        base_action = BaseAction(dict(
-            action_type='join',
-            action_arguments=[100],
-            action_code='',
-            action_options=dict(
-                left_on=['store'],
-                right_on=['store_name'],
-                drop_columns=['store_name'],
-                rename_columns={'description': 'store_description'}
-            ),
-            action_variables=dict(),
-        ))
+        base_action = BaseAction(
+            dict(
+                action_type='join',
+                action_arguments=[100],
+                action_code='',
+                action_options=dict(
+                    left_on=['store'],
+                    right_on=['store_name'],
+                    drop_columns=['store_name'],
+                    rename_columns={'description': 'store_description'},
+                ),
+                action_variables={},
+            )
+        )
         df_new = base_action.execute(df1, df_to_join=df2)
         self.assertEqual(df_new.values.tolist(), [
             ['1', '2020-01-03', 1050, 'Store A'],

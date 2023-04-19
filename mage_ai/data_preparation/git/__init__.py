@@ -39,7 +39,7 @@ class Git:
         self.__set_git_config()
 
     @classmethod
-    def get_manager(self, user: User = None):
+    def get_manager(cls, user: User = None):
         preferences = get_preferences(user=user)
         git_config = GitConfig.load(config=preferences.sync_config)
         return Git(git_config)
@@ -166,10 +166,10 @@ class Git:
     def change_branch(self, branch):
         if branch in self.repo.heads:
             current = self.repo.heads[branch]
-            current.checkout()
         else:
             current = self.repo.create_head(branch)
-            current.checkout()
+
+        current.checkout()
 
     def __set_git_config(self):
         if self.git_config.username:

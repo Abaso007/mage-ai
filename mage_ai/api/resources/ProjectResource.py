@@ -8,7 +8,7 @@ import aiohttp
 class ProjectResource(GenericResource):
     @classmethod
     @safe_db_query
-    async def collection(self, query, meta, user, **kwargs):
+    async def collection(cls, query, meta, user, **kwargs):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
@@ -30,8 +30,4 @@ class ProjectResource(GenericResource):
             ),
         ]
 
-        return self.build_result_set(
-            collection,
-            user,
-            **kwargs,
-        )
+        return cls.build_result_set(collection, user, **kwargs)

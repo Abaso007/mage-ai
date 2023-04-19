@@ -18,16 +18,13 @@ import os
 
 class PipelineScheduleTests(DBTestCase):
     @classmethod
-    def setUpClass(self):
+    def setUpClass(cls):
         super().setUpClass()
-        self.pipeline = create_pipeline_with_blocks(
-            'test pipeline',
-            self.repo_path,
-        )
+        cls.pipeline = create_pipeline_with_blocks('test pipeline', cls.repo_path)
 
     def test_pipeline_runs_count(self):
         pipeline_schedule = PipelineSchedule.create(pipeline_uuid='test_pipeline')
-        for i in range(5):
+        for _ in range(5):
             create_pipeline_run_with_schedule(
                 'test_pipeline',
                 pipeline_schedule_id=pipeline_schedule.id,
@@ -80,11 +77,11 @@ class PipelineScheduleTests(DBTestCase):
         results1 = PipelineSchedule.active_schedules(pipeline_uuids=['test_active_schedule_1'])
         results2 = PipelineSchedule.active_schedules(pipeline_uuids=['test_active_schedule_2'])
         results3 = PipelineSchedule.active_schedules()
-        self.assertEqual(set([r.id for r in results1]), set([pipeline_schedule2.id]))
-        self.assertEqual(set([r.id for r in results2]), set([pipeline_schedule3.id]))
+        self.assertEqual({r.id for r in results1}, {pipeline_schedule2.id})
+        self.assertEqual({r.id for r in results2}, {pipeline_schedule3.id})
         self.assertEqual(
-            set([r.id for r in results3]),
-            set([pipeline_schedule2.id, pipeline_schedule3.id]),
+            {r.id for r in results3},
+            {pipeline_schedule2.id, pipeline_schedule3.id},
         )
 
     def test_should_schedule(self):
@@ -103,12 +100,9 @@ class PipelineScheduleTests(DBTestCase):
 
 class PipelineRunTests(DBTestCase):
     @classmethod
-    def setUpClass(self):
+    def setUpClass(cls):
         super().setUpClass()
-        self.pipeline = create_pipeline_with_blocks(
-            'test pipeline',
-            self.repo_path,
-        )
+        cls.pipeline = create_pipeline_with_blocks('test pipeline', cls.repo_path)
 
     def test_block_runs_count(self):
         pipeline_run = create_pipeline_run(pipeline_uuid='test_pipeline')
@@ -179,25 +173,19 @@ class PipelineRunTests(DBTestCase):
         results3 = PipelineRun.active_runs(
             include_block_runs=True,
         )
+        self.assertEqual({r.id for r in results1}, {pipeline_run.id, pipeline_run2.id})
+        self.assertEqual({r.id for r in results2}, {pipeline_run4.id})
         self.assertEqual(
-            set([r.id for r in results1]),
-            set([pipeline_run.id, pipeline_run2.id]),
-        )
-        self.assertEqual(set([r.id for r in results2]), set([pipeline_run4.id]))
-        self.assertEqual(
-            set([r.id for r in results3]),
-            set([pipeline_run.id, pipeline_run2.id, pipeline_run4.id]),
+            {r.id for r in results3},
+            {pipeline_run.id, pipeline_run2.id, pipeline_run4.id},
         )
 
 
 class BlockRunTests(DBTestCase):
     @classmethod
-    def setUpClass(self):
+    def setUpClass(cls):
         super().setUpClass()
-        self.pipeline = create_pipeline_with_blocks(
-            'test pipeline',
-            self.repo_path,
-        )
+        cls.pipeline = create_pipeline_with_blocks('test pipeline', cls.repo_path)
 
     def test_log_file(self):
         execution_date = datetime.now()

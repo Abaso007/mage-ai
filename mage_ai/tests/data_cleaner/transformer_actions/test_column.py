@@ -2530,7 +2530,7 @@ class ColumnTests(TestCase):
 
         action2 = dict(
             action_arguments=['amount'],
-            action_options=dict(),
+            action_options={},
             outputs=[
                 dict(uuid='max_amount'),
             ],

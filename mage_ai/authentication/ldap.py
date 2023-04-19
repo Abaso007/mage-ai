@@ -23,9 +23,7 @@ class LDAPAuthenticator(ABC):
 
     def verify(self, username: str, password: str) -> bool:
         authenticated, user_dn = self.authenticate(username, password)
-        if authenticated:
-            return self.authorize(user_dn)
-        return False
+        return self.authorize(user_dn) if authenticated else False
 
 
 class LDAPConnection(LDAPAuthenticator):
@@ -76,10 +74,7 @@ class LDAPConnection(LDAPAuthenticator):
                 self.bind()
             self.conn.entries.clear()
             self.conn.search(self.base_dn, self.authorization_filter.format(user_dn=user_dn))
-            if self.conn.entries:
-                if len(self.conn.entries) > 0:
-                    return True
-            return False
+            return bool(self.conn.entries and len(self.conn.entries) > 0)
         except LDAPException:
             return False
 

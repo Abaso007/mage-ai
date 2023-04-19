@@ -8,7 +8,7 @@ def build_date_range(
     sample=False,
     start_date=None,
 ):
-    now = datetime.today()
+    now = datetime.now()
     today = datetime(now.year, now.month, now.day, 0)
 
     if start_date:

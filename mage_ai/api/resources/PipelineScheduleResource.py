@@ -16,10 +16,8 @@ class PipelineScheduleResource(DatabaseResource):
 
     @classmethod
     @safe_db_query
-    def collection(self, query_arg, meta, user, **kwargs):
-        pipeline = kwargs.get('parent_model')
-
-        if pipeline:
+    def collection(cls, query_arg, meta, user, **kwargs):
+        if pipeline := kwargs.get('parent_model'):
             return (
                 PipelineSchedule.
                 query.
@@ -48,7 +46,7 @@ class PipelineScheduleResource(DatabaseResource):
 
     @classmethod
     @safe_db_query
-    def create(self, payload, user, **kwargs):
+    def create(cls, payload, user, **kwargs):
         pipeline = kwargs['parent_model']
         payload['pipeline_uuid'] = pipeline.uuid
 
@@ -87,7 +85,7 @@ class PipelineScheduleResource(DatabaseResource):
             )
             for em in ems:
                 new_ids = [schedule for schedule in em.pipeline_schedules if schedule.id != self.id]
-                ps = [p for p in PipelineSchedule.query.filter(PipelineSchedule.id.in_(new_ids))]
+                ps = list(PipelineSchedule.query.filter(PipelineSchedule.id.in_(new_ids)))
                 em.update(pipeline_schedules=ps)
 
         super().update(payload)

@@ -107,7 +107,7 @@ class PipelineResource(BaseResource):
 
     @classmethod
     @safe_db_query
-    def create(self, payload, user, **kwargs):
+    def create(cls, payload, user, **kwargs):
         clone_pipeline_uuid = payload.get('clone_pipeline_uuid')
         name = payload.get('name')
         pipeline_type = payload.get('type')
@@ -122,21 +122,21 @@ class PipelineResource(BaseResource):
             source = Pipeline.get(clone_pipeline_uuid)
             pipeline = Pipeline.duplicate(source, name)
 
-        return self(pipeline, user, **kwargs)
+        return cls(pipeline, user, **kwargs)
 
     @classmethod
     @safe_db_query
-    async def get_model(self, pk):
+    async def get_model(cls, pk):
         return await Pipeline.get_async(pk)
 
     @classmethod
     @safe_db_query
-    async def member(self, pk, user, **kwargs):
+    async def member(cls, pk, user, **kwargs):
         pipeline = await Pipeline.get_async(pk)
 
         switch_active_kernel(PIPELINE_TO_KERNEL_NAME[pipeline.type])
 
-        return self(pipeline, user, **kwargs)
+        return cls(pipeline, user, **kwargs)
 
     @safe_db_query
     def delete(self, **kwargs):

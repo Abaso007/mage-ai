@@ -396,7 +396,14 @@ class ColumnTypeDetectorTests(TestCase):
                 '12.0',
                 'female',
                 '2020-07-13',
-                ' '.join(['t' for i in range(MAXIMUM_WORD_LENGTH_FOR_CATEGORY_FEATURES + 1)]),
+                ' '.join(
+                    [
+                        't'
+                        for _ in range(
+                            MAXIMUM_WORD_LENGTH_FOR_CATEGORY_FEATURES + 1
+                        )
+                    ]
+                ),
                 '2',
                 '€4',
                 '12.32%',
@@ -413,7 +420,14 @@ class ColumnTypeDetectorTests(TestCase):
                 '0',
                 'machine',
                 '2020-06-25 01:02',
-                ' '.join(['t' for i in range(MAXIMUM_WORD_LENGTH_FOR_CATEGORY_FEATURES + 1)]),
+                ' '.join(
+                    [
+                        't'
+                        for _ in range(
+                            MAXIMUM_WORD_LENGTH_FOR_CATEGORY_FEATURES + 1
+                        )
+                    ]
+                ),
                 '3',
                 '¥5,000',
                 '50%',
@@ -430,7 +444,14 @@ class ColumnTypeDetectorTests(TestCase):
                 '40.7',
                 'mutant',
                 '2020-12-25 01:02:03',
-                ' '.join(['t' for i in range(MAXIMUM_WORD_LENGTH_FOR_CATEGORY_FEATURES + 1)]),
+                ' '.join(
+                    [
+                        't'
+                        for _ in range(
+                            MAXIMUM_WORD_LENGTH_FOR_CATEGORY_FEATURES + 1
+                        )
+                    ]
+                ),
                 '4',
                 'Rs 5,000.01',
                 '20%',
@@ -447,7 +468,14 @@ class ColumnTypeDetectorTests(TestCase):
                 '40.7',
                 'alien',
                 '2020-12-25T01:02:03.000Z',
-                ' '.join(['t' for i in range(MAXIMUM_WORD_LENGTH_FOR_CATEGORY_FEATURES + 1)]),
+                ' '.join(
+                    [
+                        't'
+                        for _ in range(
+                            MAXIMUM_WORD_LENGTH_FOR_CATEGORY_FEATURES + 1
+                        )
+                    ]
+                ),
                 '4',
                 '-10128,121.3123元',
                 '18%',
@@ -471,29 +499,27 @@ class ColumnTypeDetectorTests(TestCase):
             'Pending',
         ]
 
-        for date_format in date_formats:
-            table.append(
-                [
-                    0,
-                    '40.7',
-                    'mutant',
-                    date_format,
-                    self.fake.text(),
-                    4,
-                    '$5,000.01',
-                    '15.32%',
-                    '01234',
-                    12345,
-                    12,
-                    'fire+1@mage.ai',
-                    '(123)456-7890',
-                    'Feb 18, 2021, 2:57 PM',
-                    self.fake.name(),
-                ]
-            )
-
-        df = pd.DataFrame(table, columns=columns)
-        return df
+        table.extend(
+            [
+                0,
+                '40.7',
+                'mutant',
+                date_format,
+                self.fake.text(),
+                4,
+                '$5,000.01',
+                '15.32%',
+                '01234',
+                12345,
+                12,
+                'fire+1@mage.ai',
+                '(123)456-7890',
+                'Feb 18, 2021, 2:57 PM',
+                self.fake.name(),
+            ]
+            for date_format in date_formats
+        )
+        return pd.DataFrame(table, columns=columns)
 
     def test_list_recognition(self):
         df = pd.DataFrame(

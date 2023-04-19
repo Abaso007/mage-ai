@@ -12,11 +12,7 @@ from typing import Union
 
 class ExecutorFactory:
     @classmethod
-    def get_pipeline_executor(
-        self,
-        pipeline: Pipeline,
-        execution_partition: Union[str, None] = None,
-    ) -> PipelineExecutor:
+    def get_pipeline_executor(cls, pipeline: Pipeline, execution_partition: Union[str, None] = None) -> PipelineExecutor:
         if pipeline.type == PipelineType.PYSPARK:
             from mage_ai.data_preparation.executors.pyspark_pipeline_executor import (
                 PySparkPipelineExecutor,
@@ -31,13 +27,7 @@ class ExecutorFactory:
             return PipelineExecutor(pipeline)
 
     @classmethod
-    def get_block_executor(
-        self,
-        pipeline: Pipeline,
-        block_uuid: str,
-        execution_partition: Union[str, None] = None,
-        executor_type: Union[ExecutorType, str, None] = None,
-    ) -> BlockExecutor:
+    def get_block_executor(cls, pipeline: Pipeline, block_uuid: str, execution_partition: Union[str, None] = None, executor_type: Union[ExecutorType, str, None] = None) -> BlockExecutor:
         executor_kwargs = dict(
             pipeline=pipeline,
             block_uuid=block_uuid,
