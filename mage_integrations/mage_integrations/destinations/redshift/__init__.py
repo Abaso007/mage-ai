@@ -1,21 +1,34 @@
+from typing import Dict, List, Tuple
+
 from mage_integrations.connections.redshift import Redshift as RedshiftConnection
 from mage_integrations.destinations.constants import (
     COLUMN_TYPE_OBJECT,
     UNIQUE_CONFLICT_METHOD_UPDATE,
 )
-from mage_integrations.destinations.redshift.utils import convert_column_type, convert_array
+from mage_integrations.destinations.redshift.utils import (
+    convert_array,
+    convert_column_type,
+)
 from mage_integrations.destinations.sql.base import Destination, main
 from mage_integrations.destinations.sql.utils import (
     build_alter_table_command,
     build_create_table_command,
     build_insert_command,
+)
+from mage_integrations.destinations.sql.utils import (
     column_type_mapping as column_type_mapping_orig,
 )
-from mage_integrations.destinations.sql.utils import clean_column_name
-from typing import Dict, List, Tuple
 
 
 class Redshift(Destination):
+    @property
+    def is_redshift_serverless(self):
+        return 'redshift-serverless' in self.config.get('host', '')
+
+    @property
+    def use_merge_load(self):
+        return self.config.get('use_merge_load', False)
+
     def build_connection(self) -> RedshiftConnection:
         return RedshiftConnection(
             access_key_id=self.config.get('access_key_id'),
@@ -52,6 +65,7 @@ class Redshift(Destination):
                 full_table_name=f'{schema_name}.{table_name}',
                 if_not_exists=True,
                 unique_constraints=unique_constraints,
+                use_lowercase=self.use_lowercase,
             ),
         ]
 
@@ -73,7 +87,8 @@ WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema_name}'
         """)
         current_columns = [r[0].lower() for r in results]
         schema_columns = schema['properties'].keys()
-        new_columns = [c for c in schema_columns if clean_column_name(c) not in current_columns]
+        new_columns = [c for c in schema_columns if self.clean_column_name(c)
+                       not in current_columns]
 
         if not new_columns:
             return []
@@ -84,8 +99,33 @@ WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema_name}'
                 column_type_mapping=self.column_type_mapping(schema),
                 columns=new_columns,
                 full_table_name=f'{schema_name}.{table_name}',
+                use_lowercase=self.use_lowercase
             ),
         ]
+
+    def build_merge_stage_command(
+        self,
+        unique_constraints: List[str],
+        target_table_name: str,
+        source_table_name: str,
+    ) -> str:
+        unique_constraints_clean = [
+            f'{self.clean_column_name(col)}'
+            for col in unique_constraints
+        ]
+
+        condition_list = []
+
+        for col in unique_constraints_clean:
+            condition_list.append(f'{target_table_name}.{col} = _source.{col}')
+
+        conditions = ' AND '.join(condition_list)
+
+        merge_command = f"""
+            MERGE INTO {target_table_name} USING {source_table_name} AS _source
+            ON ({conditions}) REMOVE DUPLICATES;
+        """
+        return merge_command
 
     def build_insert_commands(
         self,
@@ -106,59 +146,95 @@ WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema_name}'
             records=records,
             convert_array_func=self.convert_array,
             string_parse_func=self.string_parse_func,
+            use_lowercase=self.use_lowercase,
         )
         insert_columns = ', '.join(insert_columns)
         insert_values = ', '.join(insert_values)
 
-        commands = [
-            '\n'.join([
-                f'INSERT INTO {full_table_name} ({insert_columns})',
-                f'VALUES {insert_values}',
-            ]),
-        ]
+        if self.use_merge_load:
+            full_table_name_stage = self.full_table_name(schema_name, table_name, prefix='stage_')
+            drop_stage_table_command = f'DROP TABLE IF EXISTS {full_table_name_stage}'
+            self.logger.info(f'drop_stage_table_command: {drop_stage_table_command}')
+            create_stage_table_command = (
+                f'CREATE TABLE {full_table_name_stage} '
+                f'(LIKE {full_table_name} INCLUDING DEFAULTS)'
+            )
+            self.logger.info(f'create_stage_table_command: {create_stage_table_command}')
 
-        # TODO: handle conflicts
-        # MERGE command is in preview: https://docs.amazonaws.cn/en_us/redshift/latest/dg/r_MERGE.html
-
-        if unique_constraints and UNIQUE_CONFLICT_METHOD_UPDATE == unique_conflict_method:
-            full_table_name_temp = self.full_table_name(schema_name, table_name, prefix='temp_')
-            full_table_name_old = self.full_table_name(schema_name, table_name, prefix='old_')
-            drop_temp_table_command = f'DROP TABLE IF EXISTS {full_table_name_temp}'
-            drop_old_table_command = f'DROP TABLE IF EXISTS {full_table_name_old}'
-            unique_constraints_clean = [
-                f'{clean_column_name(col)}'
-                for col in unique_constraints
-            ]
-            commands = commands + [
-                drop_temp_table_command,
-                drop_old_table_command,
-            ] + ['\n'.join([
-                    f'CREATE TABLE {full_table_name_temp} AS '
-                    f'SELECT {insert_columns} FROM ('
-                    f'  SELECT *,'
-                    f'      ROW_NUMBER() OVER ('
-                    f'          PARTITION BY {", ".join(unique_constraints_clean)} ORDER BY _mage_created_at DESC'
-                    f'      ) as row_num'
-                    f'  FROM {full_table_name})'
-                    f'WHERE row_num = 1'
-                ])
-            ] + [
-                f'ALTER TABLE {full_table_name} rename to old_{table_name}',
-                f'ALTER TABLE {full_table_name_temp} rename to {table_name}',
-                drop_temp_table_command,
-                drop_old_table_command,
+            commands = [
+                drop_stage_table_command,
+                create_stage_table_command,
+                '\n'.join([
+                    f'INSERT INTO {full_table_name_stage} ({insert_columns})',
+                    f'VALUES {insert_values}',
+                ]),
             ]
 
+            if unique_constraints and UNIQUE_CONFLICT_METHOD_UPDATE == unique_conflict_method:
+                merge_stage_command = self.build_merge_stage_command(
+                    unique_constraints,
+                    target_table_name=full_table_name,
+                    source_table_name=full_table_name_stage,
+                )
+                self.logger.info(f'merge_stage_command: {merge_stage_command}')
+                commands = commands + [
+                    merge_stage_command,
+                    drop_stage_table_command,
+                ]
+            else:
+                insert_stage_command = (
+                    f'INSERT INTO {full_table_name} '
+                    f'(SELECT * FROM {full_table_name_stage})'
+                )
+                self.logger.info(f'insert_stage_command: {insert_stage_command}')
+                commands = commands + [
+                    insert_stage_command,
+                    drop_stage_table_command,
+                ]
+        else:
+            commands = [
+                '\n'.join([
+                    f'INSERT INTO {full_table_name} ({insert_columns})',
+                    f'VALUES {insert_values}',
+                ]),
+            ]
+
+            if unique_constraints and UNIQUE_CONFLICT_METHOD_UPDATE == unique_conflict_method:
+                full_table_name_temp = self.full_table_name(schema_name, table_name, prefix='temp_')
+                full_table_name_old = self.full_table_name(schema_name, table_name, prefix='old_')
+                drop_temp_table_command = f'DROP TABLE IF EXISTS {full_table_name_temp}'
+                drop_old_table_command = f'DROP TABLE IF EXISTS {full_table_name_old}'
+
+                self.logger.info(f'drop_temp_table_command: {drop_temp_table_command}')
+                self.logger.info(f'drop_old_table_command: {drop_old_table_command}')
+
+                unique_constraints_clean = [
+                    f'{self.clean_column_name(col)}'
+                    for col in unique_constraints
+                ]
+                commands = commands + [
+                    drop_temp_table_command,
+                    drop_old_table_command,
+                ] + ['\n'.join([
+                        f'CREATE TABLE {full_table_name_temp} AS '
+                        f'SELECT {insert_columns} FROM ('
+                        f'  SELECT *,'
+                        f'      ROW_NUMBER() OVER ('
+                        f'          PARTITION BY {", ".join(unique_constraints_clean)} ORDER BY _mage_created_at DESC'  # noqa: E501
+                        f'      ) as row_num'
+                        f'  FROM {full_table_name})'
+                        f'WHERE row_num = 1'
+                    ])
+                ] + [
+                    f'ALTER TABLE {full_table_name} rename to old_{table_name}',
+                    f'ALTER TABLE {full_table_name_temp} rename to {table_name}',
+                    drop_temp_table_command,
+                    drop_old_table_command,
+                ]
+
+        # Not query data from stl_insert table anymore since it's inefficient.
         commands.append(
-            '\n'.join([
-                'WITH last_queryid_for_table AS (',
-                '    SELECT query, MAX(si.starttime) OVER () as last_q_stime, si.starttime as stime',
-                '    FROM stl_insert si, SVV_TABLE_INFO sti',
-                f'    WHERE sti.table_id=si.tbl AND sti."table"=\'{table_name}\'',
-                ')',
-                'SELECT SUM(rows) FROM stl_insert si, last_queryid_for_table lqt ',
-                'WHERE si.query=lqt.query AND lqt.last_q_stime=stime',
-            ])
+            f'SELECT {len(records)} AS row_count'
         )
         return commands
 
@@ -187,14 +263,21 @@ WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema_name}'
         table_name: str,
         database_name: str = None,
     ) -> bool:
-        connection = self.build_connection().build_connection()
+        redshift_connection = self.build_connection()
+        connection = redshift_connection.build_connection()
         with connection.cursor() as cursor:
             cursor.execute(
                 f'SELECT * FROM pg_tables WHERE schemaname = \'{schema_name}\' AND '
-                f'tablename = \'{table_name}\'',
+                f'tablename = \'{table_name}\''
             )
-            count = cursor.rowcount
-            return count > 0
+
+            table_exist = cursor.redshift_rowcount > 0
+            self.logger.info(
+                f'Redshift table {database_name}.{schema_name}.{table_name} '
+                f'exists: {table_exist}'
+            )
+        redshift_connection.close_connection(connection)
+        return table_exist
 
     def calculate_records_inserted_and_updated(
         self,

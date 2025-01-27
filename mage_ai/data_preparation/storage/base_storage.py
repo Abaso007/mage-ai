@@ -1,5 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from contextlib import contextmanager
+from typing import Dict, List, Optional, Union
+
+import pandas as pd
+import polars as pl
 
 
 class BaseStorage(ABC):
@@ -46,14 +50,38 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    def read_json_file(self, file_path: str, default_value={}) -> Dict:
+    def read_parquet(self, file_path: str, **kwargs) -> pd.DataFrame:
+        """
+        Read parquet from a file with file path and return a pandas DataFrame.
+        """
+        pass
+
+    @abstractmethod
+    def read_polars_parquet(self, file_path: str, **kwargs) -> pl.DataFrame:
+        """
+        Read parquet from a file with file path and return a polars DataFrame.
+        """
+        pass
+
+    @abstractmethod
+    def read_json_file(
+        self,
+        file_path: str,
+        default_value: Optional[Union[Dict, List]] = None,
+        raise_exception: bool = False,
+    ) -> Dict:
         """
         Read json from a file with file path.
         """
         pass
 
     @abstractmethod
-    async def read_json_file_async(self, file_path: str, default_value={}) -> Dict:
+    async def read_json_file_async(
+        self,
+        file_path: str,
+        default_value: Dict = None,
+        raise_exception: bool = False,
+    ) -> Dict:
         """
         Read json from a file with file path asynchronously.
         """
@@ -85,4 +113,13 @@ class BaseStorage(ABC):
         """
         Write Polars dataframe to a file in parquet format.
         """
+        pass
+
+    @abstractmethod
+    @contextmanager
+    def open_to_write(self, file_path: str) -> None:
+        pass
+
+    @abstractmethod
+    async def read_async(self, file_path: str) -> str:
         pass

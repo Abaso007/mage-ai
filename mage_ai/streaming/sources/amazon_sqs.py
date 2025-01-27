@@ -2,12 +2,12 @@ import json
 import threading
 import time
 from dataclasses import dataclass
-from enum import Enum
 from typing import Callable, Dict
 
 import boto3
 
 from mage_ai.shared.config import BaseConfig
+from mage_ai.shared.enum import StrEnum
 from mage_ai.streaming.constants import DEFAULT_BATCH_SIZE
 from mage_ai.streaming.sources.base import BaseSource
 from mage_ai.streaming.sources.shared import SerDeConfig, SerializationMethod
@@ -15,7 +15,7 @@ from mage_ai.streaming.sources.shared import SerDeConfig, SerializationMethod
 DEFAULT_WAIT_TIME_SECONDS = 1
 
 
-class MessageDeletionMethod(str, Enum):
+class MessageDeletionMethod(StrEnum):
     AFTER_RECEIVED = 'AFTER_RECEIVED'
     MANUAL = 'MANUAL'
 
@@ -111,6 +111,10 @@ class HealthCheckThread(threading.Thread):
                 self.message_consumer_thread.stop()  # Gracefully stop the consumer
                 # Stop the health check after consumer is stopped
                 return
+            else:
+                self.source.print(
+                    'Message consumer is healthy. '
+                    f'Time since last message consuming attempt: {time_since_last_message} seconds')
 
             time.sleep(self.timeout_seconds)
 

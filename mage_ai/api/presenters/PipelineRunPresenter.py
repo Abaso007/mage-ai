@@ -21,7 +21,7 @@ class PipelineRunPresenter(BasePresenter):
         'variables',
     ]
 
-    async def present(self, **kwargs):
+    async def prepare_present(self, **kwargs):
         display_format = kwargs.get('format')
         data_to_display = self.model
 
@@ -35,17 +35,26 @@ class PipelineRunPresenter(BasePresenter):
                 'pipeline_schedule_name',
                 'pipeline_schedule_token',
                 'pipeline_schedule_type',
+                'repo_path',
             ]
 
             include_pipeline_type = query.get('include_pipeline_type', [False])
             if include_pipeline_type:
                 include_pipeline_type = include_pipeline_type[0]
+
             pipeline_type = query.get('pipeline_type', [None])
             if pipeline_type:
                 pipeline_type = pipeline_type[0]
 
+            include_pipeline_tags = query.get('include_pipeline_tags', [False])
+            if include_pipeline_tags:
+                include_pipeline_tags = include_pipeline_tags[0]
+
             if include_pipeline_type or pipeline_type is not None:
                 additional_attributes.append('pipeline_type')
+
+            if include_pipeline_tags:
+                additional_attributes.append('pipeline_tags')
 
             return data_to_display.to_dict(include_attributes=additional_attributes)
         elif constants.DETAIL == display_format:
@@ -84,6 +93,9 @@ PipelineRunPresenter.register_format(
         'pipeline_schedule_name',
         'pipeline_schedule_token',
         'pipeline_schedule_type',
+        'pipeline_tags',
+        'pipeline_type',
+        'repo_path',
     ],
 )
 
@@ -94,8 +106,11 @@ PipelineRunPresenter.register_format(
     ],
 )
 
-PipelineRunPresenter.register_format(
-    'with_basic_details',
+PipelineRunPresenter.register_formats(
+    [
+        f'integration_source/{constants.DETAIL}',
+        'with_basic_details',
+    ],
     [
         'execution_date',
         'id',

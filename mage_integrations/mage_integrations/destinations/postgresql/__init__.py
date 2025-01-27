@@ -15,7 +15,6 @@ from mage_integrations.destinations.sql.utils import (
     build_alter_table_command,
     build_create_table_command,
     build_insert_command,
-    clean_column_name,
 )
 from mage_integrations.destinations.sql.utils import (
     column_type_mapping as column_type_mapping_orig,
@@ -47,6 +46,7 @@ class PostgreSQL(Destination):
         table_name: str,
         database_name: str = None,
         unique_constraints: List[str] = None,
+        allow_reserved_words: bool = False,
     ) -> List[str]:
         return [
             build_create_table_command(
@@ -57,6 +57,8 @@ class PostgreSQL(Destination):
                 unique_constraints=unique_constraints,
                 column_identifier=self.quote,
                 key_properties=self.key_properties.get(stream),
+                use_lowercase=self.use_lowercase,
+                allow_reserved_words=self.allow_reserved_words
             ),
         ]
 
@@ -68,6 +70,7 @@ class PostgreSQL(Destination):
         table_name: str,
         database_name: str = None,
         unique_constraints: List[str] = None,
+        allow_reserved_words: bool = False,
     ) -> List[str]:
         results = self.build_connection().load(f"""
 SELECT
@@ -76,9 +79,10 @@ SELECT
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema_name}'
         """)
-        current_columns = [r[0].lower() for r in results]
+        current_columns = [self.clean_column_name(r[0]) for r in results]
         schema_columns = schema['properties'].keys()
-        new_columns = [c for c in schema_columns if clean_column_name(c) not in current_columns]
+        new_columns = [c for c in schema_columns if self.clean_column_name(c)
+                       not in current_columns]
 
         if not new_columns:
             return []
@@ -90,6 +94,8 @@ WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema_name}'
                 columns=new_columns,
                 full_table_name=self.full_table_name(schema_name, table_name),
                 column_identifier=self.quote,
+                use_lowercase=self.use_lowercase,
+                allow_reserved_words=self.allow_reserved_words
             ),
         ]
 
@@ -111,6 +117,8 @@ WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema_name}'
             convert_array_func=self.convert_array,
             string_parse_func=self.string_parse_func,
             column_identifier=self.quote,
+            use_lowercase=self.use_lowercase,
+            allow_reserved_words=self.allow_reserved_words
         )
         insert_columns = ', '.join(insert_columns)
         insert_values = ', '.join(insert_values)
@@ -122,11 +130,11 @@ WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema_name}'
 
         if unique_constraints and unique_conflict_method:
             unique_constraints = [
-                self._wrap_with_quotes(clean_column_name(col))
+                self._wrap_with_quotes(self.clean_column_name(col))
                 for col in unique_constraints
             ]
             columns_cleaned = [
-                self._wrap_with_quotes(clean_column_name(col))
+                self._wrap_with_quotes(self.clean_column_name(col))
                 for col in columns if col != INTERNAL_COLUMN_CREATED_AT
             ]
 
@@ -173,7 +181,8 @@ WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema_name}'
         table_name: str,
         database_name: str = None,
     ) -> bool:
-        connection = self.build_connection().build_connection()
+        postgres_connection = self.build_connection()
+        connection = postgres_connection.build_connection()
         with connection.cursor() as cursor:
             cursor.execute(
                 f'SELECT * FROM pg_tables WHERE schemaname = \'{schema_name}\' AND '
@@ -181,7 +190,9 @@ WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema_name}'
             )
             count = cursor.rowcount
 
-            return bool(count)
+            table_exist = bool(count)
+        postgres_connection.close_connection(connection)
+        return table_exist
 
     def calculate_records_inserted_and_updated(
         self,

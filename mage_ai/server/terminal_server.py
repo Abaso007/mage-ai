@@ -1,10 +1,13 @@
 import json
+import os
 import re
 
 import terminado
 from tornado import gen
 
 from mage_ai.api.utils import authenticate_client_and_token, has_at_least_editor_role
+from mage_ai.data_preparation.models.errors import FileNotInProjectError
+from mage_ai.data_preparation.models.file import ensure_file_is_in_project
 from mage_ai.data_preparation.repo_manager import get_project_uuid
 from mage_ai.orchestration.constants import Entity
 from mage_ai.orchestration.db.models.oauth import Oauth2Application
@@ -13,6 +16,7 @@ from mage_ai.settings import (
     REQUIRE_USER_AUTHENTICATION,
     is_disable_pipeline_edit_access,
 )
+from mage_ai.shared.array import find_index
 
 
 class MageTermManager(terminado.NamedTermManager):
@@ -71,6 +75,19 @@ class TerminalWebsocketServer(terminado.TermSocket):
         super(terminado.TermSocket, self).open(url_component)
 
         cwd = self.get_argument('cwd', None, True)
+        if cwd:
+            try:
+                ensure_file_is_in_project(cwd)
+                if not os.path.exists(cwd):
+                    self._logger.warning(
+                        f'The specified path {cwd} does not exist in the project directory.')
+                    cwd = None
+            except FileNotInProjectError:
+                self._logger.warning(f'The specified path {cwd} is not in the project directory.')
+                cwd = None
+            if cwd is None:
+                self._logger.warning('Using default path for terminal cwd...')
+
         term_name = self.get_argument('term_name', None, True)
         term_name = term_name if term_name else 'tty'
         self._logger.info("TermSocket.open: %s", term_name)
@@ -83,7 +100,12 @@ class TerminalWebsocketServer(terminado.TermSocket):
 
         api_key = message.get('api_key')
         token = message.get('token')
+        # This is a list of strings
         command = message.get('command')
+
+        index = find_index(lambda x: x == '__CLEAR_OUTPUT__', command or [])
+        if index >= 0:
+            command[index] = r"clear -x && history -c && history -w && clear -x"
 
         # If terminal access disable return
         if DISABLE_TERMINAL:
@@ -131,4 +153,3 @@ class TerminalWebsocketServer(terminado.TermSocket):
         if self.term_command == 'bash':
             self.terminal.ptyproc.write(
                 "bind 'set enable-bracketed-paste off' # Mage terminal settings command\r")
-        self.terminal.read_buffer.clear()

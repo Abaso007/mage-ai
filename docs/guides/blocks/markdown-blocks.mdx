@@ -1,5 +1,7 @@
 ---
 title: "Markdown blocks"
+sidebarTitle: "Markdown"
+icon: "markdown"
 description: "A markdown block is a standalone text block that supports markdown and can be used to make notes or organize your blocks."
 ---
 
@@ -64,7 +66,7 @@ Links: [Mage homepage](https://www.mage.ai)
 | Text3 | TextC | TextIII |
 
 
-#### Code block
+#### Code blocks
 ```
 {
   "firstName": "John",
@@ -73,7 +75,21 @@ Links: [Mage homepage](https://www.mage.ai)
 }
 ```
 
+#### Checkboxes
+
 - [x] Todo 1 checked
 - [ ] Todo 2 unchecked
 - [ ] Todo 3 unchecked
----
+
+
+#### Images
+
+Images are supported with the typical image markdown syntax:
+```
+![](https://images.photowall.com/products/57215/golden-retriever-puppy.jpg?h=699&q=85)
+```
+or with the `<img>` HTML tag syntax:
+```
+<img src="https://images.photowall.com/products/57215/golden-retriever-puppy.jpg?h=699&q=85" alt="drawing" width="200"/>
+```
+With the `<img>` syntax, you can create customizable image sizes with `width` and `height` attributes.

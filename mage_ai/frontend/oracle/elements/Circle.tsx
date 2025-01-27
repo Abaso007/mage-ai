@@ -8,12 +8,15 @@ import { UNIT } from '@oracle/styles/units/spacing';
 
 type CircleProps = {
   borderColor?: string;
+  borderOnly?: boolean;
   borderSize?: number;
   children?: any;
   color?: string;
   danger?: boolean;
   default?: boolean;
   muted?: boolean;
+  primary?: boolean;
+  primaryLight?: boolean;
   size: number;
   square?: boolean;
   success?: boolean;
@@ -31,6 +34,14 @@ const CircleStyle = styled.div<CircleProps>`
 
   ${props => !props.color && !(props.borderSize || props.borderColor) && `
     background-color: ${(props.theme.content || dark.content).muted};
+  `}
+
+  ${props => !props.color && props.primary && `
+    background-color: ${(props.theme.interactive || dark.interactive).linkPrimary};
+  `}
+
+  ${props => !props.color && props.primaryLight && `
+    background-color: ${(props.theme.interactive || dark.interactive).linkPrimaryLight};
   `}
 
   ${props => props.success && !props.borderSize && `
@@ -52,6 +63,26 @@ const CircleStyle = styled.div<CircleProps>`
   ${props => props.borderSize && `
     border-style: solid;
     border-width: ${props.borderSize}px;
+  `}
+
+  ${props => props.color && props.borderOnly && `
+    background-color: transparent !important;
+    border: 1px solid ${props.color};
+  `}
+
+  ${props => props.danger && props.borderOnly && `
+    background-color: transparent !important;
+    border: 1px solid ${(props.theme.borders || dark.borders).danger};
+  `}
+
+  ${props => props.warning && props.borderOnly && `
+    background-color: transparent !important;
+    border: 1px solid ${(props.theme.accent || dark.accent).warning};
+  `}
+
+  ${props => props.success && props.borderOnly && `
+    background-color: transparent !important;
+    border: 1px solid ${(props.theme.background || dark.background).success};
   `}
 
   ${props => (props.borderSize || props.borderColor) && `

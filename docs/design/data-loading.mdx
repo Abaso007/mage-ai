@@ -8,9 +8,11 @@ Mage provides data loading clients that simplify loading and exporting data in y
 -   [AWS Redshift](#redshift)
 -   [AWS S3](#s3)
 -   [Azure Blob Storage](#azureblobstorage)
+-   [DuckDB](#duckdb)
 -   [Filesystem](#fileio)
 -   [Google BigQuery](#bigquery)
 -   [Google Cloud Storage](#googlecloudstorage)
+-   [Google Sheets](#googlesheets)
 -   [MySQL](#mysql)
 -   [OracleDB](#oracledb)
 -   [PostgreSQL](#postgresql)
@@ -261,6 +263,7 @@ Handles data transfer between an S3 bucket and the Mage app. The `S3` client sup
 -   Parquet
 -   HDF5
 -   XML
+-   Excel
 
 If an IAM profile is not set up using `aws configure`, then AWS credentials for accesses the S3 bucket can be manually specified through either Mage's [configuration loader](#configuration-settings) system or through keyword arguments in the constructor (see constructor).
 
@@ -306,7 +309,7 @@ If the format is HDF5, the default key under which the data frame is stored is t
 
 -   **Args**:
 
-    -   `df (DataFrame)`: Data frame to export.
+    -   `data (Union[DataFrame, str])`: Data frame or file path to export.
     -   `bucket_name (str)`: Name of the bucket to export data frame to.
     -   `object_key (str)`: Object key in S3 bucket to export data frame to.
     -   `format (FileFormat | str, Optional)`: Format of the file to export data frame to. Defaults to `None`, in which case the format is inferred.
@@ -319,6 +322,7 @@ If the format is HDF5, the default key under which the data frame is stored is t
         | Parquet | [_DataFrame.to_parquet_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_parquet.html) |
         | HDF5    | [_DataFrame.to_hdf_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_hdf.html)         |
         | XML     | [_DataFrame.to_xml_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_xml.html)         |
+        | Excel   | [_DataFrame.to_excel_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_excel.html)     |
 
 **_load_** - `load(bucket_name: str, object_key: str, format: FileFormat | str = None, limit: int = QUERY_ROW_LIMIT **kwargs) -> DataFrame`
 
@@ -339,6 +343,7 @@ Loads data from object in S3 bucket into a Pandas data frame. This function will
         | Parquet | [_read_parquet_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_parquet.html) |
         | HDF5    | [_read_hdf_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_hdf.html)         |
         | XML     | [_read_xml_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_xml.html)         |
+        | Excel   | [_read_excel_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_excel.html)     |
 
 -   **Returns**: (`DataFrame`) Data frame object loaded from data in the specified file.
 
@@ -353,6 +358,7 @@ Handles data transfer between the filesystem and the Mage app. The `FileIO` clie
 -   Parquet
 -   HDF5
 -   XML
+-   Excel
 
 <h3> Constructor </h3>
 
@@ -385,6 +391,7 @@ If the format is HDF5, the default key under which the data frame is stored is t
         | Parquet | [_DataFrame.to_parquet_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_parquet.html) |
         | HDF5    | [_DataFrame.to_hdf_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_hdf.html)         |
         | XML     | [_DataFrame.to_xml_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_xml.html)         |
+        | Excel   | [_DataFrame.to_excel_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_excel.html)     |
 
 **_load_** - `load(filepath: os.PathLike, format: FileFormat | str = None, limit: int = QUERY_ROW_LIMIT **kwargs) -> DataFrame`
 
@@ -404,6 +411,7 @@ Loads the data frame from the filepath specified. This function will load at max
         | Parquet | [_read_parquet_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_parquet.html) |
         | HDF5    | [_read_hdf_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_hdf.html)         |
         | XML     | [_read_xml_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_xml.html)         |
+        | Excel   | [_read_excel_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_excel.html)     |
 
 -   **Returns**: (`DataFrame`) Data frame object loaded from data in the specified file.
 
@@ -418,6 +426,7 @@ Handles data transfer between a Google Cloud Storage bucket and the Mage app. Su
 -   Parquet
 -   HDF5
 -   XML
+-   Excel
 
 If `GOOGLE_APPLICATION_CREDENTIALS` environment is set, no further arguments are needed other than those specified below. Otherwise, use the factory method `with_config` to construct the data loader using manually specified credentials.
 
@@ -461,7 +470,7 @@ Exports data frame to a GoogleCloudStorage bucket.
 
 -   **Args**:
 
-    -   `df (DataFrame)`: Data frame to export.
+    -   `data (Union[DataFrame, str])`: Data frame or file path to export.
     -   `bucket_name (str)`: Name of the bucket to export data frame to.
     -   `object_key (str)`: Object key in GoogleCloudStorage bucket to export data frame to.
     -   `format (FileFormat | str, Optional)`: Format of the file to export data frame to. Defaults to `None`, in which case the format is inferred.
@@ -474,6 +483,7 @@ Exports data frame to a GoogleCloudStorage bucket.
         | Parquet | [_DataFrame.to_parquet_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_parquet.html) |
         | HDF5    | [_DataFrame.to_hdf_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_hdf.html)         |
         | XML     | [_DataFrame.to_xml_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_xml.html)         |
+        | Excel   | [_DataFrame.to_excel_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_excel.html)     |
 
 **_load_** - `load(bucket_name: str, object_key: str, format: FileFormat | str = None, limit: int = QUERY_ROW_LIMIT, **kwargs) -> DataFrame`
 
@@ -494,6 +504,7 @@ Loads data from object in GoogleCloudStorage bucket into a Pandas data frame. Th
         | Parquet | [_read_parquet_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_parquet.html) |
         | HDF5    | [_read_hdf_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_hdf.html)         |
         | XML     | [_read_xml_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_xml.html)         |
+        | Excel   | [_read_excel_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_excel.html)     |
 
 -   **Returns**: (`DataFrame`) Data frame object loaded from data in the specified file.
 
@@ -508,6 +519,7 @@ Handles data transfer between an Azure Blob Storage conatiner and Mage. Supports
 -   Parquet
 -   HDF5
 -   XML
+-   Excel
 
 To authenticate access to Azure Blob Storage, the following environment variables must be set:
 
@@ -558,10 +570,21 @@ Exports data frame to an Azure Blob Storage container.
         | Parquet | [_DataFrame.to_parquet_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_parquet.html) |
         | HDF5    | [_DataFrame.to_hdf_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_hdf.html)         |
         | XML     | [_DataFrame.to_xml_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_xml.html)         |
+        | Excel   | [_DataFrame.to_excel_](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_excel.html)     |
 
 **_load_** - `load(container_name: str, blob_path: str, format: FileFormat | str = None, limit: int = QUERY_ROW_LIMIT, **kwargs) -> DataFrame`
 
 Loads data from object in Azure Blob Storage into a Pandas data frame. This function will load at maximum 10,000,000 rows of data from the specified file (this limit is configurable).
+
+## GoogleSheets
+
+`mage_ai.io.google_sheets.GoogleSheets`
+
+Handles data transfer between a Google Sheets spreadsheet and the Mage app.
+
+Authentication is the same for our other Google Cloud data loaders. Read more about configuration [here](integrations/databases/GoogleSheets#configuration).
+
+The Google Sheets class is defined [here](https://github.com/mage-ai/mage-ai/blob/master/mage_ai/io/google_sheets.py).
 
 ## BigQuery
 
@@ -790,6 +813,7 @@ ORACLEDB_PASSWORD: OracleDB password
 ORACLEDB_HOST: OracleDB host
 ORACLEDB_PORT: OracleDB port
 ORACLEDB_SERVICE: OracleDB service
+ORACLEDB_MODE: OracleDB mode
 ```
 
 <h3> Constructor </h3>
@@ -804,8 +828,11 @@ Initializes the OracleDB data loading client.
     -   `host (str)`: Host address for database.
     -   `port (int)`: Port on which the database is running Defaults to 3306.
     -   `service (str)`: OracleDB service
+    -   `mode (str)`: switch between OracleDB mode of `thin` or `thick`
     -   `verbose (bool)`: Enables verbose output printing. Defaults to `True`.
     -   `**kwargs`: Additional settings for creating psycopg2 connection
+
+To switch OracleDB mode to `thick`, it is required to use the customized oracle Dockerfile in `integrations/oracle/Dockerfile`.
 
 <h3> Factory Methods </h3>
 
@@ -897,7 +924,7 @@ Initializes the MySQL data loading client.
 
 <h3> Factory Methods </h3>
 
-**_with_config_** - `with_config(config: BaseConfigLoader, **kwargs) -> Postgres`
+**_with_config_** - `with_config(config: BaseConfigLoader, **kwargs) -> MySQL`
 
 Creates MySQL data loading client from configuration settings.
 
@@ -972,6 +999,86 @@ Sample data from a table in the MySQL database. Sample is not guaranteed to be r
     -   `size (int)`: The number of rows to sample. Defaults to 10,000,000.
 
 -   **Returns**: (`DataFrame`) Sampled data from the table.
+
+## DuckDB
+
+`mage_ai.io.duckdb`
+
+Handles data transfer between DuckDB database and the Mage app.
+DuckDB client utilizes the following keys to connect:
+
+
+```yaml
+DUCKDB_DATABASE: database # Database name
+DUCKDB_SCHEMA: main # Schema name. Default is main.
+```
+
+
+<h3> Constructor </h3>
+
+```
+__init__(self,
+         database: str
+         schema: str = None,
+         verbose: bool = True,
+         **kwargs
+        )
+```
+
+Initializes the DuckDB data loading client.
+
+-   **Args**:
+    -   `database (str)`: The name of the database to connect to.
+    -   `schema`: Schema to use.
+    -   `verbose (bool)`: Enables verbose output printing. Defaults to `True`.
+    -   `**kwargs`: Additional settings for creating psycopg2 connection
+
+<h3> Factory Methods </h3>
+
+**_with_config_** - `with_config(config: BaseConfigLoader, **kwargs) -> DuckDB`
+
+Creates DuckDB data loading client from configuration settings.
+
+-   **Args**:
+    -   `config (BaseConfigLoader)`: Configuration loader object.
+    -   `**kwargs`: Additional parameters passed to the loader constructor
+-   **Returns**: (`DuckDB`) The constructed dataloader using this method
+
+
+<h3> Methods </h3>
+
+**_close_** - `close()`
+
+Closes connection to DuckDB database.
+
+**_open_** - `open()`
+
+Opens a connection to DuckDB database.
+
+**_table_exists_** - `table_exists()`
+
+Build query to check if a table existing in the DB.
+
+-   **Args**:
+    -   `schema_name`: Name of the schema to use.
+    -   `table_name`: Name of the table.
+-   **Returns**: true or false.
+
+**_upload_dataframe_** - `upload_dataframe()`
+
+Build query to insert data into table.
+
+-   **Args**:
+    -   `df`: Data in dataframe type.
+
+**_get_type_** - `get_type()`
+
+Convert data from input type into DuckDB type.
+
+-   **Args**:
+    -   `column`: Metadata associated with the column.
+    -   `dtype`: Input data type.
+-   **Returns**: DuckDB data type in string format.
 
 ## Snowflake
 

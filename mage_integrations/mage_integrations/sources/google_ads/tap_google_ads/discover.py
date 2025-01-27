@@ -3,9 +3,11 @@ import sys
 
 import singer
 
-from tap_google_ads.client import create_sdk_client
-from tap_google_ads.streams import initialize_core_streams
-from tap_google_ads.streams import initialize_reports
+from mage_integrations.sources.google_ads.tap_google_ads.client import create_sdk_client
+from mage_integrations.sources.google_ads.tap_google_ads.streams import (
+    initialize_core_streams,
+    initialize_reports,
+)
 
 LOGGER = singer.get_logger()
 
@@ -125,13 +127,13 @@ def build_resource_metadata(api_objects, resource):
         1: {"type": ["null", "string"]},
         2: {"type": ["null", "boolean"]},
         3: {"type": ["null", "string"], "format": "date-time"},
-        4: {"type": ["null", "string"], "format": "singer.decimal"},
+        4: {"type": ["null", "string"]},
         5: {"type": ["null", "string"]},
-        6: {"type": ["null", "string"], "format": "singer.decimal"},
+        6: {"type": ["null", "string"]},
         7: {"type": ["null", "integer"]},
         8: {"type": ["null", "integer"]},
-        9: {"type": ["null", "object", "string"], "properties": {}},
-        10: {"type": ["null", "object", "string"], "properties": {}},
+        9: {"type": ["null", "string"], "properties": {}},
+        10: {"type": ["null", "string"], "properties": {}},
         11: {"type": ["null", "string"]},
         12: {"type": ["null", "integer"]},
     }
@@ -261,6 +263,6 @@ def do_discover(resource_schema):
 
     streams.extend(core_streams)
     streams.extend(report_streams)
-    
+
     data = {"streams": streams}
     return data

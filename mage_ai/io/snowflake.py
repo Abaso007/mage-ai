@@ -11,6 +11,7 @@ from mage_ai.data_preparation.models.block.sql.utils.shared import (
 )
 from mage_ai.io.base import QUERY_ROW_LIMIT, BaseSQLConnection, ExportWritePolicy
 from mage_ai.io.config import BaseConfigLoader, ConfigKey
+from mage_ai.io.constants import UNIQUE_CONFLICT_METHOD_UPDATE
 from mage_ai.shared.hash import merge_dict
 
 DEFAULT_LOGIN_TIMEOUT = 20
@@ -75,6 +76,10 @@ class Snowflake(BaseSQLConnection):
             with self.conn.cursor() as cur:
                 return cur.execute(query_string, timeout=self.timeout, **kwargs).fetchall()
 
+    def execute_query_raw(self, query: str, **kwargs) -> None:
+        with self.conn.cursor() as cur:
+            return cur.execute(query, timeout=self.timeout).fetchall()
+
     def execute_queries(
         self,
         queries: List[str],
@@ -96,16 +101,7 @@ class Snowflake(BaseSQLConnection):
 
                     rows = cursor.execute(query, timeout=self.timeout, **variables).fetchall()
 
-                    full_table_name = fetch_query_at_indexes[idx]
-
-                    columns = []
-                    if type(full_table_name) is str:
-                        columns = self.get_columns(
-                            cursor,
-                            full_table_name=full_table_name,
-                        )
-                    elif len(rows) >= 1 and len(rows[0]) >= 1:
-                        columns = [f'col_{i}' for i in range(len(rows[0]))]
+                    columns = [i[0] for i in cursor.description]
 
                     result = DataFrame(rows, columns=columns)
                 else:
@@ -184,22 +180,14 @@ class Snowflake(BaseSQLConnection):
 
         with self.printer.print_msg(print_message):
             with self.conn.cursor() as cur:
-                columns = None
-                if (database and schema and table_name) or full_table_name:
-                    columns = self.get_columns(
-                        cur,
-                        database=database,
-                        schema=schema,
-                        table_name=table_name,
-                        full_table_name=full_table_name,
-                    )
-
                 results = cur.execute(
                     self._enforce_limit(query_string, limit),
                     *args,
                     timeout=self.timeout,
                     **kwargs,
                 ).fetchall()
+
+                columns = [i[0] for i in cur.description]
 
                 if not columns and len(results) >= 1:
                     columns = [f'col{i}' for i in range(len(results[0]))]
@@ -209,11 +197,13 @@ class Snowflake(BaseSQLConnection):
     def export(
         self,
         df: DataFrame,
-        table_name: str,
-        database: str,
-        schema: str,
+        table_name: str = None,
+        database: str = None,
+        schema: str = None,
         if_exists: str = 'append',
         query_string: Union[str, None] = None,
+        unique_conflict_method: str = None,
+        unique_constraints: List[str] = None,
         verbose: bool = True,
         **kwargs,
     ) -> None:
@@ -233,6 +223,12 @@ class Snowflake(BaseSQLConnection):
             Defaults to `'append'`.
             **kwargs: Additional arguments to pass to writer
         """
+        if table_name is None:
+            raise Exception('Please provide a table_name argument in the export method.')
+        if database is None:
+            database = self.default_database()
+        if schema is None:
+            schema = self.default_schema()
 
         if type(df) is dict:
             df = DataFrame([df])
@@ -272,29 +268,27 @@ class Snowflake(BaseSQLConnection):
                         cur.execute(f'DROP TABLE "{schema}"."{table_name}"', timeout=self.timeout)
                         should_create_table = True
 
-                if query_string:
-                    cur.execute(f'USE DATABASE {database}', timeout=self.timeout)
-                    cur.execute(f'USE SCHEMA {schema}', timeout=self.timeout)
-
-                    if should_create_table:
-                        cur.execute(f"""
-CREATE TABLE IF NOT EXISTS "{database}"."{schema}"."{table_name}" AS
-{query_string}
-""", timeout=self.timeout)
-                    else:
-                        cur.execute(f"""
-INSERT INTO "{database}"."{schema}"."{table_name}"
-{query_string}
-""", timeout=self.timeout)
-
-                else:
-                    write_pandas(
-                        self.conn,
-                        df,
+                if unique_constraints and unique_conflict_method and df is not None:
+                    self.__upsert_df_into_table(
                         table_name,
-                        database=database,
-                        schema=schema,
-                        auto_create_table=should_create_table,
+                        df,
+                        cur,
+                        database,
+                        schema,
+                        should_create_table=should_create_table,
+                        unique_conflict_method=unique_conflict_method,
+                        unique_constraints=unique_constraints,
+                        **kwargs,
+                    )
+                else:
+                    self.__write_table(
+                        table_name,
+                        df,
+                        cur,
+                        database,
+                        schema,
+                        should_create_table=should_create_table,
+                        query_string=query_string,
                         **kwargs,
                     )
 
@@ -305,6 +299,135 @@ INSERT INTO "{database}"."{schema}"."{table_name}"
                 __process()
         else:
             __process()
+
+    def __upsert_df_into_table(
+        self,
+        table_name: str,
+        df: DataFrame,
+        cursor,
+        database: str,
+        schema: str,
+        should_create_table: bool = False,
+        unique_conflict_method: str = None,
+        unique_constraints: List[str] = None,
+        allow_reserved_words: bool = True,
+        auto_clean_name: bool = True,
+        case_sensitive: bool = True,
+        **kwargs
+    ):
+        write_kwargs = merge_dict(
+            dict(
+                auto_create_table=True,
+                database=database,
+                schema=schema,
+                # This param makes sure datetime column is written correctly
+                use_logical_type=True,
+            ),
+            kwargs or dict(),
+        )
+        # should_create_table is True when the table does not exist, so just create the
+        # table as normal.
+        if should_create_table:
+            write_pandas(
+                self.conn,
+                df,
+                table_name,
+                **write_kwargs,
+            )
+        else:
+            temp_table_name = f'temp_{table_name}'
+            write_pandas(
+                self.conn,
+                df,
+                temp_table_name,
+                table_type='temp',
+                **write_kwargs,
+            )
+
+            cleaned_unique_constraints = []
+            for col in unique_constraints:
+                cleaned_col = self._clean_column_name(
+                    col,
+                    allow_reserved_words=allow_reserved_words,
+                    auto_clean_name=auto_clean_name,
+                    case_sensitive=case_sensitive,
+                )
+                cleaned_unique_constraints.append(f'"{cleaned_col}"')
+
+            cleaned_columns = []
+            for col in df.columns:
+                cleaned_col = self._clean_column_name(
+                    col,
+                    allow_reserved_words=allow_reserved_words,
+                    auto_clean_name=auto_clean_name,
+                    case_sensitive=case_sensitive,
+                )
+                cleaned_columns.append(f'"{cleaned_col}"')
+
+            merge_commands = [
+                f'MERGE INTO "{database}"."{schema}"."{table_name}" AS a',
+                f'USING (SELECT * FROM "{database}"."{schema}"."{temp_table_name}") AS b',
+                f"ON {' AND '.join([f'a.{col} = b.{col}' for col in cleaned_unique_constraints])}",
+            ]
+
+            if unique_conflict_method == UNIQUE_CONFLICT_METHOD_UPDATE:
+                set_command = ', '.join(
+                    [f'a.{col} = b.{col}' for col in cleaned_columns],
+                )
+                merge_commands.append(f'WHEN MATCHED THEN UPDATE SET {set_command}')
+
+            insert_columns = ', '.join(cleaned_columns)
+            merge_values = f"({', '.join([f'b.{col}' for col in cleaned_columns])})"
+            merge_commands.append(
+                f"WHEN NOT MATCHED THEN INSERT ({insert_columns}) VALUES {merge_values}",
+            )
+            merge_command = '\n'.join(merge_commands)
+
+            cursor.execute(merge_command, timeout=self.timeout)
+
+    def __write_table(
+        self,
+        table_name: str,
+        df: DataFrame,
+        cursor,
+        database: str,
+        schema: str,
+        should_create_table: bool = False,
+        query_string: str = None,
+        **kwargs
+    ):
+        if query_string:
+            cursor.execute(f'USE DATABASE {database}', timeout=self.timeout)
+            cursor.execute(f'USE SCHEMA {schema}', timeout=self.timeout)
+
+            if should_create_table:
+                cursor.execute(f"""
+CREATE TABLE IF NOT EXISTS "{database}"."{schema}"."{table_name}" AS
+{query_string}
+""", timeout=self.timeout)
+            else:
+                cursor.execute(f"""
+INSERT INTO "{database}"."{schema}"."{table_name}"
+{query_string}
+""", timeout=self.timeout)
+
+        else:
+            write_kwargs = merge_dict(
+                dict(
+                    auto_create_table=should_create_table,
+                    database=database,
+                    schema=schema,
+                    # This param makes sure datetime column is written correctly
+                    use_logical_type=True,
+                ),
+                kwargs or dict(),
+            )
+            write_pandas(
+                self.conn,
+                df,
+                table_name,
+                **write_kwargs,
+            )
 
     @classmethod
     def with_config(
@@ -329,7 +452,7 @@ INSERT INTO "{database}"."{schema}"."{table_name}"
         )
 
         if ConfigKey.SNOWFLAKE_TIMEOUT in config:
-            conn_kwargs['timeout'] = config[ConfigKey.SNOWFLAKE_TIMEOUT]
+            conn_kwargs['network_timeout'] = config[ConfigKey.SNOWFLAKE_TIMEOUT]
 
         if ConfigKey.SNOWFLAKE_ROLE in config:
             conn_kwargs['role'] = config[ConfigKey.SNOWFLAKE_ROLE]

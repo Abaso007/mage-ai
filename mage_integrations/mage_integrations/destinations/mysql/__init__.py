@@ -22,9 +22,6 @@ from mage_integrations.destinations.sql.utils import (
 
 
 class MySQL(Destination):
-    @property
-    def use_lowercase(self):
-        return self.config.get('use_lowercase', True)
 
     def build_connection(self) -> MySQLConnection:
         return MySQLConnection(
@@ -34,6 +31,7 @@ class MySQL(Destination):
             port=self.config.get('port'),
             username=self.config['username'],
             connection_method=self.config.get('connection_method', ConnectionMethod.DIRECT),
+            conn_kwargs=self.config.get('conn_kwargs'),
             ssh_host=self.config.get('ssh_host'),
             ssh_port=self.config.get('ssh_port', 22),
             ssh_username=self.config.get('ssh_username'),
@@ -135,8 +133,10 @@ WHERE table_name = '{table_name}' AND table_schema = '{database_name}'
             convert_column_to_type_func=convert_column_to_type,
             string_parse_func=lambda x, y: x.replace("'", "''").replace('\\', '\\\\')
             if COLUMN_TYPE_OBJECT == y['type'] else x,
+            use_lowercase=self.use_lowercase,
         )
-        insert_columns = ', '.join([self.clean_column_name(col) for col in insert_columns])
+        insert_columns = ', '.join([self.clean_column_name(col)
+                                    for col in insert_columns])
         insert_values = ', '.join(insert_values)
 
         insert_into = f'INTO {table_name} ({insert_columns})'
@@ -144,7 +144,8 @@ WHERE table_name = '{table_name}' AND table_schema = '{database_name}'
 
         if unique_constraints and unique_conflict_method:
             if UNIQUE_CONFLICT_METHOD_UPDATE == unique_conflict_method:
-                columns_cleaned = [self.clean_column_name(col) for col in columns]
+                columns_cleaned = [self.clean_column_name(col)
+                                   for col in columns]
                 update_command = [f'{col} = new.{col}' for col in columns_cleaned
                                   if col != INTERNAL_COLUMN_CREATED_AT]
                 commands_after += [

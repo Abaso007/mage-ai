@@ -1,8 +1,15 @@
+import json
+from typing import Mapping, Union
+
 from mage_ai.data_cleaner.transformer_actions.constants import ActionType, Axis
 from mage_ai.data_preparation.models.constants import (
     BlockLanguage,
     BlockType,
     PipelineType,
+)
+from mage_ai.data_preparation.templates.data_integrations.utils import (
+    TEMPLATE_TYPE_DATA_INTEGRATION,
+    render_template,
 )
 from mage_ai.data_preparation.templates.utils import (
     read_template_file,
@@ -11,8 +18,6 @@ from mage_ai.data_preparation.templates.utils import (
     write_template,
 )
 from mage_ai.io.base import DataSource
-from typing import Mapping, Union
-import json
 
 
 MAP_DATASOURCE_TO_HANDLER = {
@@ -59,6 +64,14 @@ def fetch_template_source(
         return template_source
 
     if 'template_path' in config:
+        if TEMPLATE_TYPE_DATA_INTEGRATION == config.get('template_type'):
+            return render_template(
+                block_type=block_type,
+                config=config,
+                language=language,
+                pipeline_type=pipeline_type,
+            )
+
         template_variables_to_render = dict(
             code=config.get('existing_code', ''),
         )
@@ -127,19 +140,23 @@ def __fetch_data_loader_templates(
     pipeline_type: PipelineType = PipelineType.PYTHON,
 ) -> str:
     data_source = config.get('data_source')
+    default_template_name = None
     file_extension = 'py'
     if pipeline_type == PipelineType.PYSPARK:
         template_folder = 'data_loaders/pyspark'
     elif pipeline_type == PipelineType.STREAMING:
         template_folder = 'data_loaders/streaming'
-        file_extension = 'yaml'
+        if language == BlockLanguage.YAML:
+            file_extension = 'yaml'
+        else:
+            default_template_name = 'generic_python.py'
     elif language == BlockLanguage.R:
         template_folder = 'data_loaders/r'
         file_extension = 'r'
     else:
         template_folder = 'data_loaders'
 
-    default_template = template_folder + '/' + 'default.jinja'
+    default_template = template_folder + '/' + (default_template_name or 'default.jinja')
     if data_source is None:
         template_path = default_template
     else:
@@ -247,19 +264,23 @@ def __fetch_data_exporter_templates(
     pipeline_type: PipelineType = PipelineType.PYTHON,
 ) -> str:
     data_source = config.get('data_source')
+    default_template_name = None
     file_extension = 'py'
     if pipeline_type == PipelineType.PYSPARK:
         template_folder = 'data_exporters/pyspark'
     elif pipeline_type == PipelineType.STREAMING:
         template_folder = 'data_exporters/streaming'
-        file_extension = 'yaml'
+        if language == BlockLanguage.YAML:
+            file_extension = 'yaml'
+        else:
+            default_template_name = 'generic_python.py'
     elif language == BlockLanguage.R:
         template_folder = 'data_exporters/r'
         file_extension = 'r'
     else:
         template_folder = 'data_exporters'
 
-    default_template = template_folder + '/' + 'default.jinja'
+    default_template = template_folder + '/' + (default_template_name or 'default.jinja')
     if data_source is None:
         template_path = default_template
     else:

@@ -3,6 +3,7 @@ import styled from 'styled-components';
 
 import InputWrapper, { InputWrapperProps, SHARED_INPUT_STYLES } from './InputWrapper';
 import dark from '@oracle/styles/themes/dark';
+import { pauseEvent as pauseEventFunc } from '@utils/events';
 
 const HEIGHT = 26;
 const WIDTH = 46;
@@ -10,11 +11,13 @@ const COMPACT_HEIGHT = 20;
 const COMPACT_WIDTH = 35;
 
 type ToggleSwitchProps = {
-  checked: boolean;
+  checked?: boolean;
   compact?: boolean;
   disabled?: boolean;
+  id?: string;
   monotone?: boolean;
-  onCheck: Dispatch<SetStateAction<boolean>>;
+  onCheck?: Dispatch<SetStateAction<boolean>>;
+  pauseEvent?: boolean;
   purpleBackground?: boolean;
 } & InputWrapperProps;
 
@@ -48,7 +51,7 @@ const ToggleSwitchStyle = styled.label<
     cursor: ${({ disabled }) => (disabled ? 'not-allowed' : 'pointer')};
     background-color: ${({ disabled }) => (disabled ? dark.monotone.white : dark.monotone.black)};
     border-radius: 13px;
-    ${({ disabled }) => disabled && `border: 1px solid ${dark.monotone.grey200}`};
+    ${({ disabled, compact }) => (disabled && !compact) && `border: 1px solid ${dark.monotone.grey200}`};
     top: 0;
     right: 0;
     bottom: 0;
@@ -92,7 +95,9 @@ const ToggleSwitchStyle = styled.label<
 const ToggleSwitch = ({
   checked,
   disabled,
+  id,
   onCheck,
+  pauseEvent = true,
   ...props
 }: ToggleSwitchProps, ref) => (
   <InputWrapper
@@ -102,17 +107,25 @@ const ToggleSwitch = ({
       <ToggleSwitchStyle
         {...props}
         disabled={disabled}
+        id={id}
         noBackground
         noBorder
       >
         <input
           checked={checked}
+          id={id ? `${id}_input` : null}
+          readOnly
           type="checkbox"
         />
         <span
           onClick={disabled
             ? null
-            : () => onCheck?.(value => !value)
+            : (e) => {
+              if (pauseEvent) {
+                pauseEventFunc(e);
+              }
+              onCheck?.(value => !value);
+            }
           }
         />
       </ToggleSwitchStyle>

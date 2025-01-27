@@ -12,7 +12,8 @@ import { SHARED_STYLES } from '@oracle/elements/Text';
 
 export const ContainerStyle = styled.div<{
   addBottomPadding?: boolean;
-  executedAndIdle: boolean;
+  executedAndIdle?: boolean;
+  showBorderTop?: boolean;
 } & BorderColorShareProps>`
   ${BORDER_COLOR_SHARED_STYLES}
 
@@ -36,13 +37,23 @@ export const ContainerStyle = styled.div<{
     border-bottom-style: solid;
     border-bottom-width: 2px;
   `}
+
+  ${props => props.showBorderTop && `
+    border-top-left-radius: ${BORDER_RADIUS}px;
+    border-top-right-radius: ${BORDER_RADIUS}px;
+    border-top-style: solid;
+    border-top-width: 2px;
+  `}
 `;
 
-export const OutputRowStyle = styled.div<{
+export type OutputRowProps = {
   contained?: boolean;
   first?: boolean;
   last?: boolean;
-}>`
+  normalPadding?: boolean;
+};
+
+export const OutputRowStyle = styled.div<OutputRowProps>`
   ${props => props.first && `
     padding-top: ${UNIT * PADDING_UNITS}px;
   `}
@@ -51,8 +62,13 @@ export const OutputRowStyle = styled.div<{
     padding-bottom: ${UNIT * PADDING_UNITS}px;
   `}
 
-  ${props => props.contained && `
+  ${props => props.contained && !props.normalPadding && `
     padding-left: ${LEFT_PADDING}px;
+    padding-right: ${UNIT * PADDING_UNITS}px;
+  `}
+
+  ${props => props.contained && props.normalPadding && `
+    padding-left: ${UNIT * PADDING_UNITS}px;
     padding-right: ${UNIT * PADDING_UNITS}px;
   `}
 `;
@@ -82,6 +98,8 @@ export const HTMLOutputStyle = styled.div<any>`
 export const ExtraInfoStyle = styled.div<BorderColorShareProps>`
   ${BORDER_COLOR_SHARED_STYLES}
 
+  border-bottom-left-radius: ${BORDER_RADIUS}px;
+  border-bottom-right-radius: ${BORDER_RADIUS}px;
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-left-style: solid;
@@ -91,8 +109,6 @@ export const ExtraInfoStyle = styled.div<BorderColorShareProps>`
 
   ${props => `
     background-color: ${(props.theme.borders || dark.borders).light};
-    border-bottom-left-radius: ${BORDER_RADIUS}px;
-    border-bottom-right-radius: ${BORDER_RADIUS}px;
   `}
 `;
 
@@ -110,4 +126,10 @@ export const ExtraInfoBorderStyle = styled.div`
   ${props => `
     border-top: 1px solid ${(props.theme.borders || dark.borders).medium};
   `}
+`;
+
+export const MultiOutputStyle = styled.div`
+  .inactive {
+    display: none;
+  }
 `;

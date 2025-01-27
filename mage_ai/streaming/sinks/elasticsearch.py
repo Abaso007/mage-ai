@@ -16,6 +16,8 @@ class ElasticSearchConfig(BaseConfig):
     api_key: str = None
     ca_cert: str = None
     _id: str = None
+    _op_type: str = None
+    _source: str = None
 
 
 class ElasticSearchSink(BaseSink):
@@ -33,27 +35,35 @@ class ElasticSearchSink(BaseSink):
     def test_connection(self):
         return True
 
-    def write(self, data: Dict):
-        self._print(f'Ingest data {data}, time={time.time()}')
+    def write(self, message: Dict):
+        self._print(f'Ingest data {message}, time={time.time()}')
         if self.config._id is not None:
             self.client.index(
                 index=self.config.index_name,
-                body=data,
-                id=data[self.config._id],
+                body=message,
+                id=message[self.config._id],
                 refresh=True
             )
         else:
             self.client.index(
                 index=self.config.index_name,
-                body=data,
+                body=message,
                 refresh=True
             )
 
-    def batch_write(self, data: List[Dict]):
-        self._print(f'Batch ingest data {data}, time={time.time()}')
-        if self.config._id is not None:
-            docs = [{'_index': self.config.index_name, '_id': doc[self.config._id],
-                     'doc': doc} for doc in data]
-        else:
-            docs = [{'_index': self.config.index_name, 'doc': doc} for doc in data]
+    def batch_write(self, messages: List[Dict]):
+        self._print(f'Batch ingest data {messages}, time={time.time()}')
+        docs = []
+        for msg in messages:
+            doc = {'_index': self.config.index_name}
+            if self.config._id is not None:
+                doc['id'] = msg[self.config._id]
+            if self.config._op_type is not None:
+                doc['_op_type'] = self.config._op_type
+            if self.config._source is not None:
+                doc[self.config._source] = msg
+            else:
+                doc['_doc'] = msg
+            docs.append(doc)
+
         helpers.bulk(self.client, docs)

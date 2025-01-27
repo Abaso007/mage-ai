@@ -7,10 +7,10 @@ from typing import Callable, Optional
 import singer
 from singer.catalog import Catalog, CatalogEntry
 
-from tap_postmark import tools
-from tap_postmark.postmark import Postmark
-from tap_postmark.streams import STREAMS
 from mage_integrations.sources.messages import write_schema
+from mage_integrations.sources.postmark.tap_postmark import tools
+from mage_integrations.sources.postmark.tap_postmark.postmark import Postmark
+from mage_integrations.sources.postmark.tap_postmark.streams import STREAMS
 
 LOGGER: logging.RootLogger = singer.get_logger()
 
@@ -20,6 +20,7 @@ def sync(
     state: dict,
     catalog: Catalog,
     start_date: str,
+    logger=None,
 ) -> None:
     """Sync data from tap source.
 
@@ -29,15 +30,16 @@ def sync(
         catalog {Catalog} -- Stream catalog
         start_date {str} -- Start date
     """
+    logger = logger or LOGGER
     # For every stream in the catalog
-    LOGGER.info('Sync')
-    LOGGER.debug('Current state:\n{state}')
+    logger.info('Sync')
+    logger.debug('Current state:\n{state}')
 
     # Only selected streams are synced, whether a stream is selected is
     # determined by whether the key-value: "selected": true is in the schema
     # file.
     for stream in catalog.get_selected_streams(state):
-        LOGGER.info(f'Syncing stream: {stream.tap_stream_id}')
+        logger.info(f'Syncing stream: {stream.tap_stream_id}')
 
         # Update the current stream as active syncing in the state
         singer.set_currently_syncing(state, stream.tap_stream_id)
@@ -48,7 +50,7 @@ def sync(
             stream.tap_stream_id,
         ) or dict(start_date=start_date)
 
-        LOGGER.debug(f'Stream state: {stream_state}')
+        logger.debug(f'Stream state: {stream_state}')
 
         # Write the schema
         write_schema(

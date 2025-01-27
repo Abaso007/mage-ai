@@ -14,12 +14,26 @@ IntegrationSourcePolicy.allow_actions([
     OauthScope.CLIENT_PRIVATE,
 ], condition=lambda policy: policy.has_at_least_viewer_role())
 
+
+IntegrationSourcePolicy.allow_actions(
+    [
+        constants.DETAIL,
+    ],
+    scopes=[
+        OauthScope.CLIENT_PRIVATE,
+    ],
+    condition=lambda policy: policy.has_at_least_viewer_role(),
+    override_permission_condition=lambda _policy: True,
+)
+
+
 IntegrationSourcePolicy.allow_actions([
     constants.CREATE,
     constants.UPDATE,
 ], scopes=[
     OauthScope.CLIENT_PRIVATE,
 ], condition=lambda policy: policy.has_at_least_editor_role())
+
 
 IntegrationSourcePolicy.allow_read(IntegrationSourcePresenter.default_attributes + [
     'docs'
@@ -28,6 +42,20 @@ IntegrationSourcePolicy.allow_read(IntegrationSourcePresenter.default_attributes
 ], on_action=[
     constants.LIST,
 ], condition=lambda policy: policy.has_at_least_viewer_role())
+
+
+IntegrationSourcePolicy.allow_read(
+    IntegrationSourcePresenter.default_attributes,
+    scopes=[
+        OauthScope.CLIENT_PRIVATE,
+    ],
+    on_action=[
+        constants.DETAIL,
+    ],
+    condition=lambda policy: policy.has_at_least_viewer_role(),
+    override_permission_condition=lambda _policy: True,
+)
+
 
 IntegrationSourcePolicy.allow_read([
     'error_message',
@@ -39,6 +67,7 @@ IntegrationSourcePolicy.allow_read([
     constants.CREATE,
 ], condition=lambda policy: policy.has_at_least_editor_role())
 
+
 IntegrationSourcePolicy.allow_read([
     'selected_streams',
     'streams',
@@ -49,8 +78,10 @@ IntegrationSourcePolicy.allow_read([
     constants.UPDATE,
 ], condition=lambda policy: policy.has_at_least_editor_role())
 
+
 IntegrationSourcePolicy.allow_write([
     'action_type',
+    'block_uuid',
     'config',
     'pipeline_uuid',
     'streams',
@@ -60,10 +91,43 @@ IntegrationSourcePolicy.allow_write([
     constants.CREATE,
 ], condition=lambda policy: policy.has_at_least_editor_role())
 
+
 IntegrationSourcePolicy.allow_write([
+    'block_uuid',
     'streams',
 ], scopes=[
     OauthScope.CLIENT_PRIVATE,
 ], on_action=[
     constants.UPDATE,
 ], condition=lambda policy: policy.has_at_least_editor_role())
+
+
+IntegrationSourcePolicy.allow_query(
+    [
+        'block_uuid[]',
+    ],
+    scopes=[
+        OauthScope.CLIENT_PRIVATE,
+    ],
+    on_action=[
+        constants.LIST,
+    ],
+    condition=lambda policy: policy.has_at_least_viewer_role(),
+    override_permission_condition=lambda _policy: True,
+)
+
+
+IntegrationSourcePolicy.allow_query(
+    [
+        'pipeline_schedule_id',
+        'stream',
+    ],
+    scopes=[
+        OauthScope.CLIENT_PRIVATE,
+    ],
+    on_action=[
+        constants.DETAIL,
+    ],
+    condition=lambda policy: policy.has_at_least_viewer_role(),
+    override_permission_condition=lambda _policy: True,
+)

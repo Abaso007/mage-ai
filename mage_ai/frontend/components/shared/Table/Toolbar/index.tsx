@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 
 import AddButton from '@components/shared/AddButton';
 import Badge from '@oracle/components/Badge';
@@ -13,15 +14,15 @@ import Text from '@oracle/elements/Text';
 import TextInput from '@oracle/elements/Inputs/TextInput';
 import ToggleMenu from '@oracle/components/ToggleMenu';
 import Tooltip from '@oracle/components/Tooltip';
-import { BORDER_RADIUS } from '@oracle/styles/units/borders';
 import {
   BUTTON_PADDING,
   ConfirmDialogueOpenEnum,
   POPUP_MENU_WIDTH,
   POPUP_TOP_OFFSET,
+  SEARCH_INPUT_PROPS,
   SHARED_TOOLTIP_PROPS,
 } from './constants';
-import { Close, Ellipsis, Filter, Group, Search, Trash } from '@oracle/icons';
+import { Close, Ellipsis, Filter, Group, Trash } from '@oracle/icons';
 import { FlyoutMenuItemType } from '@oracle/components/FlyoutMenu';
 import { SHARED_BUTTON_PROPS } from '@components/shared/AddButton';
 import { UNIT } from '@oracle/styles/units/spacing';
@@ -36,6 +37,7 @@ type ToolbarProps = {
     onClick?: () => void;
     menuItems?: FlyoutMenuItemType[];
   };
+  children?: any;
   deleteRowProps?: {
     confirmationMessage: string;
     isLoading: boolean;
@@ -46,6 +48,7 @@ type ToolbarProps = {
     Icon: any;
     confirmationDescription?: string;
     confirmationMessage?: string;
+    disabled?: boolean;
     isLoading?: boolean;
     label?: string;
     onClick: () => void;
@@ -74,7 +77,10 @@ type ToolbarProps = {
   query?: {
     [keyof: string]: string[];
   };
+  resetLimitOnFilterApply?: boolean;
+  resetPageOnFilterApply?: boolean;
   secondaryButtonProps?: {
+    beforeIcon?: JSX.Element;
     disabled?: boolean;
     isLoading?: boolean;
     label?: string;
@@ -93,6 +99,7 @@ type ToolbarProps = {
 
 function Toolbar({
   addButtonProps,
+  children,
   deleteRowProps,
   extraActionButtonProps,
   filterOptions = {},
@@ -102,13 +109,16 @@ function Toolbar({
   onClickFilterDefaults,
   onFilterApply,
   query = {},
+  resetLimitOnFilterApply,
+  resetPageOnFilterApply,
   secondaryButtonProps,
   searchProps,
   selectedRowId,
   setSelectedRow,
   showDivider,
 }: ToolbarProps) {
-  const isViewerRole = isViewer();
+  const router = useRouter();
+  const isViewerRole = isViewer(router?.basePath);
   const addButtonMenuRef = useRef(null);
   const filterButtonMenuRef = useRef(null);
   const groupButtonMenuRef = useRef(null);
@@ -132,6 +142,7 @@ function Toolbar({
     Icon: extraActionIcon,
     confirmationDescription: extraActionConfirmDescription,
     confirmationMessage: extraActionConfirmMessage,
+    disabled: disabledExtraAction = disabledActions,
     isLoading: isLoadingExtraAction,
     label: extraActionLabel,
     onClick: onExtraActionClick,
@@ -191,6 +202,7 @@ function Toolbar({
   ]);
 
   const {
+    beforeIcon: secondaryButtonBeforeIcon,
     disabled: secondaryButtonDisabled,
     label: secondaryButtonLabel,
     onClick: onClickSecondaryButton,
@@ -199,6 +211,7 @@ function Toolbar({
   } = secondaryButtonProps || {};
   const secondaryButtonEl = useMemo(() => (
     <KeyboardShortcutButton
+      beforeElement={secondaryButtonBeforeIcon}
       bold
       disabled={secondaryButtonDisabled}
       greyBorder
@@ -215,6 +228,7 @@ function Toolbar({
   ), [
     isLoadingSecondaryButton,
     onClickSecondaryButton,
+    secondaryButtonBeforeIcon,
     secondaryButtonDisabled,
     secondaryButtonLabel,
     secondaryButtonTooltip,
@@ -241,6 +255,8 @@ function Toolbar({
       options={filterOptionsEnabledMapping}
       parentRef={filterButtonMenuRef}
       query={query}
+      resetLimitOnApply={resetLimitOnFilterApply}
+      resetPageOnApply={resetPageOnFilterApply}
       setOpen={setFilterButtonMenuOpen}
       toggleValueMapping={filterValueLabelMapping}
     >
@@ -271,6 +287,8 @@ function Toolbar({
     onClickFilterDefaults,
     onFilterApply,
     query,
+    resetLimitOnFilterApply,
+    resetPageOnFilterApply,
   ]);
 
   const {
@@ -350,6 +368,8 @@ function Toolbar({
         </Spacing>
       )}
 
+      {children}
+
       {showDivider && (
         <>
           <Spacing ml="12px" />
@@ -357,7 +377,7 @@ function Toolbar({
         </>
       )}
 
-      <Spacing mr={BUTTON_PADDING} />
+      {(addButtonProps || secondaryButtonProps || children) && <Spacing mr={BUTTON_PADDING} />}
       {filterButtonEl}
 
       {groupMenuItems?.length > 0 &&
@@ -375,11 +395,11 @@ function Toolbar({
             <KeyboardShortcutButton
               Icon={!isLoadingExtraAction && extraActionIcon}
               bold
-              disabled={disabledActions}
+              disabled={disabledExtraAction}
               greyBorder
               loading={isLoadingExtraAction}
               onClick={openExtraActionConfirmDialogue
-                ? () => setConfirmationDialogueOpenIdx(ConfirmDialogueOpenEnum.SECONDARY)
+                ? () => setConfirmationDialogueOpenIdx(ConfirmDialogueOpenEnum.FIRST)
                 : onExtraActionClick
               }
               smallIcon
@@ -390,7 +410,7 @@ function Toolbar({
           </Tooltip>
           <ClickOutside
             onClickOutside={closeConfirmationDialogue}
-            open={confirmationDialogueOpenIdx === ConfirmDialogueOpenEnum.SECONDARY}
+            open={confirmationDialogueOpenIdx === ConfirmDialogueOpenEnum.FIRST}
           >
             <PopupMenu
               onCancel={closeConfirmationDialogue}
@@ -420,14 +440,14 @@ function Toolbar({
               disabled={disabledActions}
               greyBorder
               loading={isLoadingDelete}
-              onClick={() => setConfirmationDialogueOpenIdx(ConfirmDialogueOpenEnum.DELETE)}
+              onClick={() => setConfirmationDialogueOpenIdx(ConfirmDialogueOpenEnum.SECOND)}
               smallIcon
               uuid="Table/Toolbar/DeleteButton"
             />
           </Tooltip>
           <ClickOutside
             onClickOutside={closeConfirmationDialogue}
-            open={confirmationDialogueOpenIdx === ConfirmDialogueOpenEnum.DELETE}
+            open={confirmationDialogueOpenIdx === ConfirmDialogueOpenEnum.SECOND}
           >
             <PopupMenu
               danger
@@ -457,18 +477,12 @@ function Toolbar({
           <Spacing ml={BUTTON_PADDING} />
           <Flex flex={1}>
             <TextInput
+              {...SEARCH_INPUT_PROPS}
               afterIcon={searchValue ? <Close /> : null}
               afterIconClick={() => {
                 onSearchChange('');
                 searchInputRef?.current?.focus();
               }}
-              afterIconSize={UNIT * 1.5}
-              beforeIcon={<Search />}
-              borderRadius={BORDER_RADIUS}
-              defaultColor
-              fullWidth
-              greyBorder
-              maxWidth={UNIT * 40}
               onChange={e => onSearchChange(e.target.value)}
               paddingVertical={9}
               placeholder={searchPlaceholder ? searchPlaceholder : null}

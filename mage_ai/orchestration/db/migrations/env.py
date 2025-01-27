@@ -12,14 +12,15 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-if config.config_file_name is not None:
+if (
+    config.config_file_name is not None
+    and config.attributes.get('configure_logger', True)
+):
     fileConfig(config.config_file_name)
 
 logging.getLogger('alembic').setLevel(config.get_section_option('logger_alembic', 'level'))
 
 # add your model's MetaData object here for 'autogenerate' support
-
-sys.path.insert(0, '/Users/david_yang/mage/mage-ai/.venv/lib/python3.9/site-packages')
 
 sys.path.insert(0, os.path.dirname(
     # mage_ai

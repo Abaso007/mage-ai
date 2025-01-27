@@ -6,6 +6,8 @@ from singer.schema import Schema
 from mage_integrations.sources.base import Source as BaseSource
 from mage_integrations.sources.catalog import Catalog, CatalogEntry
 from mage_integrations.sources.constants import (
+    BATCH_FETCH_LIMIT,
+    BATCH_FETCH_LIMIT_KEY,
     COLUMN_FORMAT_DATETIME,
     COLUMN_FORMAT_UUID,
     COLUMN_TYPE_BOOLEAN,
@@ -16,12 +18,13 @@ from mage_integrations.sources.constants import (
     COLUMN_TYPE_STRING,
     REPLICATION_METHOD_FULL_TABLE,
     REPLICATION_METHOD_LOG_BASED,
-    SUBBATCH_FETCH_LIMIT,
+    SUBBATCH_FETCH_LIMIT_KEY,
     UNIQUE_CONFLICT_METHOD_UPDATE,
 )
 from mage_integrations.sources.sql.utils import (
     build_comparison_statement,
     column_type_mapping,
+    predicate_operator_uuid_to_comparison_operator,
 )
 from mage_integrations.sources.sql.utils import (
     wrap_column_in_quotes as wrap_column_in_quotes_orig,
@@ -35,6 +38,15 @@ from mage_integrations.utils.schema_helpers import (
 
 
 class Source(BaseSource):
+    @property
+    def fetch_limit(self):
+        config = self.config or dict()
+        return (
+            config.get(SUBBATCH_FETCH_LIMIT_KEY) or
+            config.get(BATCH_FETCH_LIMIT_KEY) or
+            BATCH_FETCH_LIMIT
+        )
+
     @property
     def table_prefix(self):
         return ''
@@ -186,8 +198,8 @@ class Source(BaseSource):
                 sleep(1)
 
             custom_limit = query.get('_limit')
-            limit = SUBBATCH_FETCH_LIMIT
-            offset = query.get('_offset', 0) + SUBBATCH_FETCH_LIMIT * loops
+            limit = self.fetch_limit
+            offset = query.get('_offset', 0) + limit * loops
 
             rows, rows_temp = self.__fetch_rows(
                 stream,
@@ -201,7 +213,7 @@ class Source(BaseSource):
             loops += 1
 
             if (custom_limit is not None and limit * loops >= custom_limit) or \
-                    len(rows_temp) < SUBBATCH_FETCH_LIMIT:
+                    len(rows_temp) < limit:
                 break
 
         # If the query params doesn't have limit, then that's the last query in the batch.
@@ -278,16 +290,21 @@ WHERE table_schema = '{schema}'
         bookmarks: Dict = None,
         query: Dict = None,
         count_records: bool = False,
-        limit: int = SUBBATCH_FETCH_LIMIT,
+        limit: int = None,
         offset: int = 0,
     ) -> Tuple[List[Dict], List[Any]]:
         if query is None:
             query = {}
+
+        if limit is None:
+            limit = self.fetch_limit
+
         table_name = stream.tap_stream_id
 
         key_properties = stream.key_properties
         unique_constraints = stream.unique_constraints
         bookmark_properties = self._get_bookmark_properties_for_stream(stream)
+        bookmark_property_operators = stream.bookmark_property_operators
 
         # Don’t use a Set; they are unordered
         order_by_columns = []
@@ -342,9 +359,19 @@ WHERE table_schema = '{schema}'
             for col, val in bookmarks.items():
                 if col not in bookmark_properties or val is None:
                     continue
-                comparison_operator = '>='
-                if unique_constraints is not None and col in unique_constraints:
+
+                comparison_operator = None
+
+                if bookmark_property_operators and bookmark_property_operators.get(col):
+                    comparison_operator = predicate_operator_uuid_to_comparison_operator(
+                        bookmark_property_operators.get(col),
+                    )
+                elif unique_constraints is not None and col in unique_constraints:
                     comparison_operator = '>'
+
+                if comparison_operator is None:
+                    comparison_operator = '>='
+
                 where_statements.append(
                     self._build_comparison_statement(
                         col,

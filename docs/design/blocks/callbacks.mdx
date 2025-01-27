@@ -103,6 +103,7 @@ Here are the keyword arguments that are  available in each callback function:
 | Name | Description | Sample value |
 | --- | --- | --- |
 | `block_uuid` | Callback block UUID. | `'fireball_callback'` |
+| `parent_block_uuid` | The block UUID of the parent block. | `'parent_block'` |
 | `ds` | Date string when the parent block started executing. | `'2023-12-25'` |
 | `event` | A dictionary containing metadata from an event triggered pipeline. | `{}` |
 | `execution_date` | Python datetime object for when the parent block started executing. | `datetime.datetime(2023, 4, 26, 20, 28, 17, 335254, tzinfo=datetime.timezone.utc)` |
@@ -156,7 +157,7 @@ data integration pipelines:
 2. In the top right of the block, click the triple dot icon which should open up a menu
 with more options. Click "Add callback".
 3. You should now see another code editor under the main editor for your block.
-![Block callback](/media/block-callback.png)
+![Block callback](https://github.com/mage-ai/assets/blob/main/block-callback.png?raw=True)
 4. You can add an `on_success` callback and/or a `on_failure` callback. These callbacks
 will run after your block run completes or fails. When you run your block in the
 pipeline edit page, it will also run the callback depending on the status of the block.

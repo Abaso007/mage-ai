@@ -1,6 +1,6 @@
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation } from 'react-query';
 
 import BlockCubeGradient from '@oracle/icons/custom/BlockCubeGradient';
@@ -15,7 +15,7 @@ import BlockType, {
 import Button from '@oracle/elements/Button';
 import CodeBlock from '@components/CodeBlock';
 import Flex from '@oracle/components/Flex';
-import FlexContainer from '@oracle/components/FlexContainer';
+import FlexContainer, { JUSTIFY_SPACE_BETWEEN_PROPS } from '@oracle/components/FlexContainer';
 import KeyboardShortcutButton from '@oracle/elements/Button/KeyboardShortcutButton';
 import LLMType, { LLMUseCaseEnum } from '@interfaces/LLMType';
 import PipelineType, { PipelineTypeEnum } from '@interfaces/PipelineType';
@@ -36,19 +36,22 @@ import {
   HeaderStyle,
   RowStyle,
 } from './index.style';
+import { DataIntegrationTypeEnum, TemplateTypeEnum } from '@interfaces/BlockTemplateType';
+import { KEY_ENTER, KEY_ESCAPE } from '@utils/hooks/keyboardShortcuts/constants';
 import { ICON_SIZE_LARGE } from '@oracle/styles/units/icons';
 import { ObjectType } from '@interfaces/BlockActionObjectType';
 import {
   PADDING_UNITS,
   UNIT,
 } from '@oracle/styles/units/spacing';
-import { capitalize } from '@utils/string';
+import { capitalize, startsWithNumber } from '@utils/string';
 import { onSuccess } from '@api/utils/response';
 import { useError } from '@context/Error';
 
 type ConfigureBlockProps = {
   block: BlockType | BlockRequestPayloadType;
   defaultName: string;
+  isReplacingBlock?: boolean;
   isUpdatingBlock?: boolean;
   onClose: () => void;
   onSave: (opts: {
@@ -57,24 +60,23 @@ type ConfigureBlockProps = {
     name: string;
   }) => void;
   pipeline: PipelineType;
-  preventDuplicateBlockName?: boolean;
 };
 
 function ConfigureBlock({
   block,
   defaultName,
+  isReplacingBlock,
   isUpdatingBlock,
   onClose,
   onSave,
   pipeline,
-  preventDuplicateBlockName,
 }: ConfigureBlockProps) {
   const [showError] = useError(null, {}, [], {
     uuid: 'ConfigureBlock',
   });
 
   // @ts-ignore
-  const sharedPipelinesCount = Object.keys(block?.pipelines || {}).length;
+  const sharedPipelinesCount = (block?.pipelines || [])?.length;
 
   const refTextInput = useRef(null);
   const [blockAttributes, setBlockAttributes] = useState<{
@@ -85,10 +87,46 @@ function ConfigureBlock({
     type?: BlockTypeEnum;
   }>({
     color: block?.color || null,
-    language: block?.language,
+    language: block?.defaults?.language || block?.language,
     name: defaultName,
     type: block?.type,
   });
+
+  const blockNameStartsWithNumber = useMemo(() =>
+    !!blockAttributes?.name && startsWithNumber(blockAttributes?.name || ''),
+    [blockAttributes?.name],
+  );
+
+  const handleOnSave = useCallback(() => {
+    onSave({
+      ...blockAttributes,
+      name: blockAttributes?.name || defaultName,
+    });
+    onClose();
+  }, [blockAttributes, defaultName, onClose, onSave]);
+    
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      event.stopPropagation();
+      if (event.key === KEY_ESCAPE) {
+        onClose();
+      } else if (event.key === KEY_ENTER) {
+        const buttonText = event.target.innerText;
+        if (!buttonText.startsWith('Save and')
+          && buttonText !== 'Cancel'
+          && !blockNameStartsWithNumber
+        ) {
+          handleOnSave();
+        }
+      }
+    };
+
+    document?.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document?.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [blockNameStartsWithNumber, handleOnSave, onClose]);
 
   useEffect(() => {
     refTextInput?.current?.focus();
@@ -110,6 +148,27 @@ function ConfigureBlock({
     isGenerateBlock,
   ]);
 
+  const isDataIntegration: boolean = useMemo(() => {
+    // @ts-ignore
+    if (TemplateTypeEnum.DATA_INTEGRATION === block?.config?.template_type) {
+      return true;
+    }
+
+    if (
+      [
+        DataIntegrationTypeEnum.DESTINATIONS,
+        DataIntegrationTypeEnum.SOURCES,
+      ].includes(blockActionObject?.language)
+    ) {
+      return true;
+    }
+
+    return false;
+  }, [
+      block,
+      blockActionObject,
+    ]);
+
   const [llm, setLLM] = useState<LLMType>(null);
   const [createLLM, { isLoading: isLoadingCreateLLM }] = useMutation(
     api.llms.useCreate(),
@@ -121,6 +180,7 @@ function ConfigureBlock({
           }) => {
             const {
               block_type: blockType,
+              code, // Raw code without block template
               configuration,
               content,
               language,
@@ -130,7 +190,7 @@ function ConfigureBlock({
               ...prev,
               block_action_object: null,
               configuration: configuration,
-              content,
+              content: content,
               language,
               type: blockType,
             }));
@@ -150,11 +210,19 @@ function ConfigureBlock({
     if (isGenerateBlock && generateBlockCommand && !llm) {
       // @ts-ignore
       createLLM({
+        // llm: {
+        //   request: {
+        //     block_description: generateBlockCommand,
+        //   },
+        //   use_case: LLMUseCaseEnum.GENERATE_CODE,
+        // },
         llm: {
           request: {
             block_description: generateBlockCommand,
+            block_type: BlockTypeEnum.TRANSFORMER,
+            code_language: BlockLanguageEnum.PYTHON,
           },
-          use_case: LLMUseCaseEnum.GENERATE_BLOCK_WITH_DESCRIPTION,
+          use_case: LLMUseCaseEnum.GENERATE_CODE,
         },
       });
     }
@@ -278,32 +346,47 @@ function ConfigureBlock({
 
           <Flex flex="6">
             <Text bold warning>
-              Renaming this block will affect {sharedPipelinesCount} pipelines.
-              The renamed block may need to be re-added to the shared pipeline(s).
+              {isUpdatingBlock &&
+                `Renaming this block will affect ${sharedPipelinesCount} pipelines.`
+                + ' The renamed block may need to be re-added to the shared pipeline(s).'
+              }
+              {isReplacingBlock &&
+                'This will create a copy of the selected block and replace the existing'
+                + ' one so it is no longer shared with any other pipelines.'
+              }
             </Text>
           </Flex>
         </RowStyle>
       )}
 
-      <RowStyle>
-        <Text default>
-          Name
-        </Text>
+      <RowStyle columnFlex>
+        <FlexContainer {...JUSTIFY_SPACE_BETWEEN_PROPS} fullWidth>
+          <Text default>
+            Name
+          </Text>
 
-        <TextInput
-          alignRight
-          noBackground
-          noBorder
-          // @ts-ignore
-          onChange={e => setBlockAttributes(prev => ({
-            ...prev,
-            name: e.target.value,
-          }))}
-          paddingVertical={UNIT}
-          placeholder="Block name..."
-          ref={refTextInput}
-          value={blockAttributes?.name || ''}
-        />
+          <TextInput
+            alignRight
+            fullWidth
+            noBackground
+            noBorder
+            // @ts-ignore
+            onChange={e => setBlockAttributes(prev => ({
+              ...prev,
+              name: e.target.value,
+            }))}
+            paddingVertical={UNIT}
+            placeholder="Block name..."
+            ref={refTextInput}
+            value={blockAttributes?.name || ''}
+          />
+        </FlexContainer>
+
+        {blockNameStartsWithNumber && (
+          <Text bold warning>
+            Note: Numbers are not allowed as the first character of a block name.
+          </Text>
+        )}
       </RowStyle>
 
       <RowStyle>
@@ -335,12 +418,22 @@ function ConfigureBlock({
               BlockLanguageEnum.PYTHON,
               BlockLanguageEnum.SQL,
               BlockLanguageEnum.R,
+              BlockLanguageEnum.YAML,
             ].reduce((acc, v: string) => {
               const language =
                 customTemplate ? customTemplate?.language : blockAttributes?.language;
               const selected = language === v;
 
-              if ((!isCustomBlock || isUpdatingBlock) && !selected) {
+              if (
+                (
+                  (!isCustomBlock || isUpdatingBlock || isReplacingBlock)
+                  && !selected
+                  && (
+                    (!isDataIntegration || BlockLanguageEnum.R === v)
+                      || (!isDataIntegration || BlockLanguageEnum.SQL === v)
+                  )
+                ) || (isCustomBlock && BlockLanguageEnum.YAML === v)
+              ) {
                 return acc;
               }
 
@@ -349,11 +442,11 @@ function ConfigureBlock({
                   <Button
                     borderColor={!selected ? 'transparent' : null}
                     compact
-                    default={!isCustomBlock && !selected}
-                    disabled={!isCustomBlock && !selected}
+                    default={!isCustomBlock && !selected && !isDataIntegration}
+                    disabled={!isCustomBlock && !selected && !isDataIntegration}
                     noBackground
-                    notClickable={(!isCustomBlock || isUpdatingBlock) && selected}
-                    onClick={customTemplate
+                    notClickable={(!isCustomBlock || isUpdatingBlock || !isDataIntegration) && selected}
+                    onClick={(customTemplate && !isDataIntegration)
                       ? null
                       // @ts-ignore
                       : () => setBlockAttributes(prev => ({
@@ -371,14 +464,14 @@ function ConfigureBlock({
               return acc;
             }, [])}
 
-            {!isCustomBlock && (
+            {!isCustomBlock && !isDataIntegration && (
               <>
                 <Spacing mr={1} />
                 <Locked muted />
               </>
             )}
 
-            <Spacing mr={isCustomBlock ? 1 : 2} />
+            <Spacing mr={(isCustomBlock || isDataIntegration) ? 1 : 2} />
           </FlexContainer>
         </RowStyle>
       )}
@@ -392,6 +485,7 @@ function ConfigureBlock({
           {isCustomBlock && (
             <Select
               alignRight
+              disabled={isReplacingBlock}
               noBackground
               noBorder
               // @ts-ignore
@@ -482,16 +576,19 @@ function ConfigureBlock({
           <KeyboardShortcutButton
             bold
             centerText
-            disabled={isLoadingCreateLLM}
-            onClick={() => onSave({
-              ...blockAttributes,
-              name: blockAttributes?.name || defaultName,
-            })}
+            disabled={isLoadingCreateLLM || blockNameStartsWithNumber}
+            onClick={handleOnSave}
             primary
             tabIndex={0}
             uuid="ConfigureBlock/SaveAndAddBlock"
           >
-            Save and {isUpdatingBlock ? 'update' : 'add'} block
+            Save and&nbsp;
+            {isUpdatingBlock
+              ? 'update'
+              : (isReplacingBlock
+                ? 'replace'
+                : 'add')
+            }
           </KeyboardShortcutButton>
 
           <Spacing ml={1}>

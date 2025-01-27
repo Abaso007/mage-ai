@@ -2,17 +2,20 @@ import React, { useMemo } from 'react';
 import Dashboard from '@components/Dashboard';
 import ErrorsType from '@interfaces/ErrorsType';
 import api from '@api';
+import useGetUser from '@utils/hooks/useGetUser';
 import { BreadcrumbType } from '@components/shared/Header';
 import { UNIT } from '@oracle/styles/units/spacing';
 import { WorkspacesPageNameEnum, buildNavigationItems } from './constants';
-import { getUser } from '@utils/session';
 
 type WorkspacesDashboardProps = {
   before?: any;
   breadcrumbs?: BreadcrumbType[],
   children: any;
   errors?: ErrorsType;
+  headerOffset?: number;
+  mainContainerHeader?: any;
   pageName: WorkspacesPageNameEnum;
+  setErrors?: (errors: ErrorsType) => void;
   subheaderChildren?: any;
 };
 
@@ -21,7 +24,10 @@ function WorkspacesDashboard({
   breadcrumbs = [],
   children,
   errors,
+  headerOffset,
+  mainContainerHeader,
   pageName,
+  setErrors,
   subheaderChildren,
 }: WorkspacesDashboardProps) {
   const { data: dataStatus } = api.statuses.list();
@@ -30,7 +36,7 @@ function WorkspacesDashboard({
     [dataStatus],
   );
 
-  const user = getUser() || {};
+  const user = useGetUser() || {};
 
   return (
     <Dashboard
@@ -38,7 +44,10 @@ function WorkspacesDashboard({
       beforeWidth={before ? 50 * UNIT : 0}
       breadcrumbs={breadcrumbs}
       errors={errors}
+      headerOffset={headerOffset}
+      mainContainerHeader={mainContainerHeader}
       navigationItems={buildNavigationItems(user, projectType, pageName)}
+      setErrors={setErrors}
       subheaderChildren={subheaderChildren}
       title="Workspaces"
       uuid="workspaces/index"

@@ -1,19 +1,18 @@
-import pandas as pd
 from typing import Dict
+
+import pandas as pd
 
 from mage_ai.api.operations import constants
 from mage_ai.api.operations.base import BaseOperation
-from mage_ai.data_preparation.models.constants import BlockLanguage, BlockType
-from mage_ai.data_preparation.models.widget import Widget
-from mage_ai.data_preparation.variable_manager import get_global_variables
 from mage_ai.presenters.charts.data_sources.base import ChartDataSourceBase
+from mage_ai.presenters.charts.data_sources.constants import DEFAULT_LIMIT
 from mage_ai.shared.hash import merge_dict
 
 
 class ChartDataSourcePipelineSchedules(ChartDataSourceBase):
     async def load_data(
         self,
-        user = None,
+        user=None,
         meta: Dict = None,
         variables: Dict = None,
         **kwargs,
@@ -21,7 +20,7 @@ class ChartDataSourcePipelineSchedules(ChartDataSourceBase):
         response = await BaseOperation(
             action=constants.LIST,
             meta=merge_dict({
-                constants.META_KEY_LIMIT: 10000,
+                constants.META_KEY_LIMIT: DEFAULT_LIMIT,
             }, meta or {}),
             query=variables,
             resource='pipeline_schedules',

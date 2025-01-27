@@ -1,3 +1,6 @@
+from mage_ai.shared.enum import StrEnum
+
+ALL = 'all'
 CREATE = 'create'
 DELETE = 'delete'
 DETAIL = 'detail'
@@ -12,3 +15,15 @@ FILE_KEY_NAME = 'file'
 META_KEY_FORMAT = '_format'
 META_KEY_LIMIT = '_limit'
 META_KEY_OFFSET = '_offset'
+META_KEY_ORDER_BY = '_order_by[]'
+
+COOKIE_PREFIX = '__COOKIE__'
+
+
+class OperationType(StrEnum):
+    ALL = ALL
+    CREATE = CREATE
+    DELETE = DELETE
+    DETAIL = DETAIL
+    LIST = LIST
+    UPDATE = UPDATE

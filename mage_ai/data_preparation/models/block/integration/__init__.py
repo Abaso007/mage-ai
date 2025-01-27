@@ -1,21 +1,49 @@
 import json
 import os
 import subprocess
+import sys
+from contextlib import contextmanager, redirect_stdout
 from logging import Logger
-from typing import Dict, List
+from typing import Callable, Dict, Generator, List
 
 import pandas as pd
 
 from mage_ai.data_cleaner.transformer_actions.utils import clean_column_name
 from mage_ai.data_integrations.logger.utils import print_log_from_line
-from mage_ai.data_integrations.utils.config import build_config, get_catalog_by_stream
-from mage_ai.data_preparation.models.block import PYTHON_COMMAND, Block
-from mage_ai.data_preparation.models.constants import BlockType
+from mage_ai.data_integrations.utils.config import (
+    build_config,
+    get_batch_fetch_limit,
+    get_catalog_by_stream,
+)
+from mage_ai.data_preparation.models.block import Block
+from mage_ai.data_preparation.models.block.data_integration.constants import (
+    CONFIG_KEY_CLEAN_UP_INPUT_FILE,
+)
+from mage_ai.data_preparation.models.constants import PYTHON_COMMAND, BlockType
+from mage_ai.data_preparation.shared.stream import StreamToLogger
 from mage_ai.shared.hash import merge_dict
 from mage_ai.shared.security import filter_out_config_values
 
 
 class IntegrationBlock(Block):
+    @contextmanager
+    def _redirect_streams(
+        self,
+        build_block_output_stdout: Callable[..., object] = None,
+        from_notebook: bool = False,
+        logger: Logger = None,
+        logging_tags: Dict = None,
+    ) -> Generator[None, None, None]:
+        if build_block_output_stdout:
+            stdout = build_block_output_stdout(self.uuid)
+        elif logger is not None and not from_notebook:
+            stdout = StreamToLogger(logger, logging_tags=logging_tags)
+        else:
+            stdout = sys.stdout
+
+        with redirect_stdout(stdout) as out:
+            yield out
+
     def _execute_block(
         self,
         outputs_from_input_vars,
@@ -29,8 +57,6 @@ class IntegrationBlock(Block):
         runtime_arguments: Dict = None,
         **kwargs,
     ) -> List:
-        from mage_integrations.sources.constants import BATCH_FETCH_LIMIT
-
         if logging_tags is None:
             logging_tags = dict()
 
@@ -77,7 +103,7 @@ class IntegrationBlock(Block):
                 pipeline=self.pipeline,
             ) or dict()
 
-            if stream_catalog.get('replication_method') == 'INCREMENTAL':
+            if stream_catalog.get('replication_method') in ['INCREMENTAL', 'LOG_BASED']:
                 from mage_integrations.sources.utils import (
                     update_source_state_from_destination_state,
                 )
@@ -85,10 +111,6 @@ class IntegrationBlock(Block):
                     source_state_file_path,
                     destination_state_file_path,
                 )
-            else:
-                query_data['_offset'] = BATCH_FETCH_LIMIT * index
-            if not is_last_block_run:
-                query_data['_limit'] = BATCH_FETCH_LIMIT
 
         outputs = []
         if BlockType.DATA_LOADER == self.type:
@@ -99,6 +121,16 @@ class IntegrationBlock(Block):
                     self.pipeline.data_loader.file_path,
                     variables_dictionary_for_config,
                 )
+                batch_fetch_limit = get_batch_fetch_limit(config)
+
+                if stream_catalog.get('replication_method') == 'FULL_TABLE' or (
+                    stream_catalog.get('replication_method') == 'LOG_BASED' and
+                    not stream_catalog.get('bookmark_properties')
+                ):
+                    query_data['_offset'] = batch_fetch_limit * index
+                if not is_last_block_run:
+                    query_data['_limit'] = batch_fetch_limit
+
                 args = [
                     PYTHON_COMMAND,
                     self.pipeline.source_file_path,
@@ -123,7 +155,7 @@ class IntegrationBlock(Block):
                 proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
                 for line in proc.stdout:
-                    f.write(line.decode()),
+                    f.write(line.decode())
                     print_log_from_line(
                         line,
                         config=config,
@@ -145,7 +177,7 @@ class IntegrationBlock(Block):
 
             file_size = os.path.getsize(source_output_file_path)
             msg = f'Finished writing {file_size} bytes with {lines_in_file} lines to output '\
-                  f'file {source_output_file_path}.'
+                f'file {source_output_file_path}.'
             if logger:
                 logger.info(msg, **updated_logging_tags)
             else:
@@ -177,6 +209,14 @@ class IntegrationBlock(Block):
             schema_original = None
             schema_updated = None
             schema_index = None
+            # Support an 'aliases' property for columns, which keeps types mapped correctly
+            # in case of transformer code using pandas.rename
+            output_col_aliases = {}
+            # We need to look at original stream_catalog schema props:
+            for _name, col_props in stream_catalog['schema']['properties'].items():
+                for alias in col_props.get('aliases', []):
+                    output_col_aliases[alias] = col_props
+
             output_arr = []
             records_transformed = 0
             df_sample = None
@@ -246,6 +286,13 @@ class IntegrationBlock(Block):
                                         if k in properties_original else v
                                         for k, v in properties_updated.items()
                                     }
+                                    # Separately, update schema types from alias map
+                                    if len(output_col_aliases.keys()):
+                                        for cname in schema_updated['schema']['properties'].keys():
+                                            if cname in output_col_aliases:
+                                                prop = output_col_aliases[cname]
+                                                schema_updated['schema']['properties'][cname] = prop
+
                                     # Update column names in unique_constraints and key_properties
                                     new_columns = schema_updated['schema']['properties'].keys()
                                     __update_col_names(
@@ -290,7 +337,7 @@ class IntegrationBlock(Block):
             msg = f'Transformed {records_transformed} total records for stream {stream}.'
             file_size = os.path.getsize(source_output_file_path)
             msg2 = f'Finished writing {file_size} bytes with {len(output_arr)} lines to '\
-                   f'output file {source_output_file_path}.'
+                f'output file {source_output_file_path}.'
             if logger:
                 logger.info(msg, **updated_logging_tags)
                 logger.info(msg2, **updated_logging_tags)
@@ -352,6 +399,11 @@ class IntegrationBlock(Block):
                     filter_out_config_values(cmd, config),
                 )
 
+            # Automatically clean up the input file to save space
+            if config.get(CONFIG_KEY_CLEAN_UP_INPUT_FILE):
+                if os.path.exists(source_output_file_path):
+                    os.remove(source_output_file_path)
+
             outputs.append(proc)
 
         return outputs
@@ -364,9 +416,10 @@ class SourceBlock(IntegrationBlock):
 class DestinationBlock(IntegrationBlock):
     def to_dict(
         self,
-        include_content=False,
-        include_outputs=False,
-        sample_count=None,
+        include_content: bool = False,
+        include_outputs: bool = False,
+        include_block_pipelines: bool = False,
+        sample_count: int = None,
         check_if_file_exists: bool = False,
         destination_table: str = None,
         state_stream: str = None,
@@ -376,7 +429,9 @@ class DestinationBlock(IntegrationBlock):
             from mage_ai.data_preparation.models.pipelines.integration_pipeline import (
                 IntegrationPipeline,
             )
-            integration_pipeline = IntegrationPipeline(self.pipeline.uuid)
+            integration_pipeline = IntegrationPipeline(
+                self.pipeline.uuid, repo_path=self.repo_path
+            )
             destination_state_file_path = integration_pipeline.destination_state_file_path(
                 destination_table=destination_table,
                 stream=state_stream,
@@ -390,15 +445,37 @@ class DestinationBlock(IntegrationBlock):
 
         return merge_dict(
             super().to_dict(
-                include_content,
-                include_outputs,
-                sample_count,
-                check_if_file_exists,
+                include_content=include_content,
+                include_outputs=include_outputs,
+                include_block_pipelines=include_block_pipelines,
+                sample_count=sample_count,
+                check_if_file_exists=check_if_file_exists,
             ),
             data,
         )
 
-    def update(self, data, update_state=False):
+    async def to_dict_async(
+        self,
+        include_content: bool = False,
+        include_outputs: bool = False,
+        include_block_pipelines: bool = False,
+        sample_count: int = None,
+        check_if_file_exists: bool = False,
+        destination_table: str = None,
+        state_stream: str = None,
+        **kwargs,
+    ) -> Dict:
+        return self.to_dict(
+            include_content=include_content,
+            include_outputs=include_outputs,
+            include_block_pipelines=include_block_pipelines,
+            sample_count=sample_count,
+            check_if_file_exists=check_if_file_exists,
+            destination_table=destination_table,
+            state_stream=state_stream,
+        )
+
+    def update(self, data, update_state=False, **kwargs):
         if update_state:
             from mage_ai.data_preparation.models.pipelines.integration_pipeline import (
                 IntegrationPipeline,
@@ -407,7 +484,9 @@ class DestinationBlock(IntegrationBlock):
                 update_destination_state_bookmarks,
             )
 
-            integration_pipeline = IntegrationPipeline(self.pipeline.uuid)
+            integration_pipeline = IntegrationPipeline(
+                self.pipeline.uuid, repo_path=self.repo_path
+            )
             tap_stream_id = data.get('tap_stream_id')
             destination_table = data.get('destination_table')
             bookmark_values = data.get('bookmark_values', {})
@@ -422,7 +501,7 @@ class DestinationBlock(IntegrationBlock):
                     bookmark_values=bookmark_values
                 )
 
-        return super().update(data)
+        return super().update(data, **kwargs)
 
     def output_variables(self, execution_partition: str = None) -> List[str]:
         return []

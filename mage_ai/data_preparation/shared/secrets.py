@@ -1,13 +1,14 @@
 import os
 import shutil
 import uuid
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from mage_ai.data_preparation.models.project import Project
 from mage_ai.orchestration.constants import Entity
 from mage_ai.orchestration.db import safe_db_query
-from mage_ai.settings.repo import get_data_dir, get_repo_path
+from mage_ai.settings.repo import get_data_dir
 
 DEFAULT_MAGE_SECRETS_DIR = 'secrets'
 
@@ -29,10 +30,12 @@ def get_secrets_dir(
     Returns:
         str: /path/to/secrets/directory
     """
-    secrets_dir = os.path.abspath(os.path.join(get_data_dir(), DEFAULT_MAGE_SECRETS_DIR))
+    secrets_dir = os.path.join(get_data_dir(), DEFAULT_MAGE_SECRETS_DIR)
     # Use expanduser path if the secrets dir hasn't been created yet
     if not os.path.exists(secrets_dir):
         secrets_dir = os.path.expanduser(secrets_dir)
+
+    secrets_dir = os.path.abspath(secrets_dir)
 
     if entity == Entity.GLOBAL:
         return secrets_dir
@@ -88,6 +91,7 @@ def create_secret(
     entity: Entity = Entity.GLOBAL,
     project_uuid: str = None,
     pipeline_uuid: str = None,
+    repo_name: str = None,
 ):
     from mage_ai.orchestration.db.models.secrets import Secret
     missing_values = []
@@ -114,7 +118,7 @@ def create_secret(
         'name': name,
         'value': encrypted_value,
         'key_uuid': key_uuid,
-        'repo_name': get_repo_path(),
+        'repo_name': repo_name or Project().repo_path_for_database_query('secrets')[0],
     }
 
     secret = Secret(**kwargs)
@@ -122,7 +126,7 @@ def create_secret(
     return secret
 
 
-def get_valid_secrets_for_repo() -> List:
+def get_valid_secrets_for_repo(repo_names: List[str] = None) -> List:
     """
     This method still only returns secrets for the current repo. This will need to be
     updated in the future to return secrets based on the parameters passed in.
@@ -134,7 +138,10 @@ def get_valid_secrets_for_repo() -> List:
 
     fernet = Fernet(key)
 
-    secrets = Secret.query.filter(Secret.repo_name == get_repo_path())
+    if not repo_names:
+        repo_names = Project().repo_path_for_database_query('secrets')
+
+    secrets = Secret.query.filter(Secret.repo_name.in_(repo_names))
     valid_secrets = []
     if secrets.count() > 0:
         for secret in secrets:
@@ -155,7 +162,8 @@ def get_secret_value(
     pipeline_uuid: str = None,
     project_uuid: str = None,
     repo_name: str = None,
-) -> str:
+    **kwargs,
+) -> Optional[str]:
     from mage_ai.orchestration.db.models.secrets import Secret
     key, key_uuid = _get_encryption_key(
         entity,
@@ -166,10 +174,7 @@ def get_secret_value(
     if key:
         fernet = Fernet(key)
         if key_uuid:
-            secret = Secret.query.filter(
-                Secret.name == name,
-                Secret.key_uuid == key_uuid,
-            ).one_or_none()
+            secret = Secret.get_secret(name, key_uuid)
 
         if secret:
             try:
@@ -180,7 +185,7 @@ def get_secret_value(
         # For backwards compatibility, check if there is a secret with the name and no uuid
         if entity == Entity.GLOBAL:
             if repo_name is None:
-                repo_name = get_repo_path()
+                repo_name = Project().repo_path_for_database_query('secrets')[0]
             secret_legacy = Secret.query.filter(
                 Secret.name == name,
                 Secret.repo_name == repo_name,
@@ -192,8 +197,19 @@ def get_secret_value(
                     return fernet.decrypt(secret_legacy.value.encode('utf-8')).decode('utf-8')
                 except InvalidToken:
                     pass
+    if not kwargs.get('suppress_warning', False):
+        print(f'WARNING: Could not find secret value for secret {name}.')
 
-    print(f'WARNING: Could not find secret value for secret {name}.')
+
+def get_secret_value_db_safe(name: str, **kwargs) -> Optional[str]:
+    """
+    Calls get_secret_value only if the db has already been initialized.
+    """
+    from mage_ai.orchestration.db import db_connection
+    if db_connection.session and db_connection.session.is_active:
+        return get_secret_value(name, **kwargs)
+    else:
+        return None
 
 
 @safe_db_query
@@ -202,6 +218,8 @@ def delete_secret(
     entity: Entity = Entity.GLOBAL,
     pipeline_uuid: str = None,
     project_uuid: str = None,
+    repo_name: str = None,
+    **kwargs,
 ) -> None:
     from mage_ai.orchestration.db.models.secrets import Secret
     secret = None
@@ -211,21 +229,18 @@ def delete_secret(
         pipeline_uuid=pipeline_uuid,
     )
     if key_uuid:
-        secret = Secret.query.filter(
-            Secret.name == name,
-            Secret.key_uuid == key_uuid,
-        ).one_or_none()
+        secret = Secret.get_secret(name, key_uuid)
 
     if entity == Entity.GLOBAL and not secret:
         secret = Secret.query.filter(
             Secret.name == name,
-            Secret.repo_name == get_repo_path(),
+            Secret.repo_name == repo_name or Project().repo_path_for_database_query('secrets')[0],
             Secret.key_uuid.is_(None),
         ).one_or_none()
 
     if secret:
         secret.delete()
-    else:
+    elif not kwargs.get('suppress_warning', False):
         print(f'WARNING: Could not find secret {name}')
 
 
@@ -289,5 +304,8 @@ def _get_encryption_key(
             key_uuid = f.read()
     except Exception:
         key_uuid = None
+
+    if key is not None:
+        key = key.strip()
 
     return key, key_uuid

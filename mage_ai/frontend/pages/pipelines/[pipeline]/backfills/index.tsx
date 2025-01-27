@@ -18,7 +18,6 @@ import api from '@api';
 import { Add } from '@oracle/icons';
 import { PADDING_UNITS, UNIT } from '@oracle/styles/units/spacing';
 import { PageNameEnum } from '@components/PipelineDetailPage/constants';
-import { goToWithQuery } from '@utils/routing';
 import { onSuccess } from '@api/utils/response';
 import { queryFromUrl } from '@utils/url';
 import { randomNameGenerator } from '@utils/string';
@@ -35,8 +34,8 @@ function PipelineBackfills({
   const router = useRouter();
   const pipelineUUID = pipeline.uuid;
   const {
-    data: dataPipelineRuns,
-    mutate: fetchPipelineRuns,
+    data: dataBackfills,
+    mutate: fetchBackfills,
   } = api.backfills.list({
     _limit: 20,
     _offset: 0,
@@ -45,7 +44,7 @@ function PipelineBackfills({
   }, {
     refreshInterval: 60000,
   });
-  const models = useMemo(() => dataPipelineRuns?.backfills || [], [dataPipelineRuns]);
+  const models = useMemo(() => dataBackfills?.backfills || [], [dataBackfills]);
 
   const q = queryFromUrl();
 
@@ -86,7 +85,7 @@ function PipelineBackfills({
   // ]);
 
   const breadcrumbs = useMemo(() => {
-    let asLink = `/pipelines/${pipelineUUID}/backfills`;
+    const asLink = `/pipelines/${pipelineUUID}/backfills`;
 
     const arr = [
       {
@@ -107,6 +106,7 @@ function PipelineBackfills({
 
     return arr;
   }, [
+    pipelineUUID,
     selectedRow,
   ]);
 
@@ -173,10 +173,11 @@ function PipelineBackfills({
       )}
       {models?.length >= 1 && (
         <BackfillsTable
+          fetchBackfills={fetchBackfills}
           models={models}
-          onClickRow={({ id }: BackfillType) => goToWithQuery({
-            backfill_id: id,
-          })}
+          // onClickRow={({ id }: BackfillType) => goToWithQuery({
+          //   backfill_id: id,
+          // })}
           pipeline={pipeline}
           selectedRow={selectedRow}
         />

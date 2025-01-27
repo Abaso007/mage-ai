@@ -1,6 +1,6 @@
 import time
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List
 
 import pandas as pd
@@ -21,8 +21,11 @@ class PostgresConfig(BaseConfig):
     table: str
     username: str
     port: int = 5432
-    unique_conflict_method = UNIQUE_CONFLICT_METHOD_IGNORE
-    unique_constraints = []
+    unique_conflict_method: str = UNIQUE_CONFLICT_METHOD_IGNORE
+    unique_constraints: List = field(default_factory=list)
+    allow_reserved_words: bool = False
+    auto_clean_name: bool = True
+    case_sensitive: bool = False
 
 
 class PostgresSink(BaseSink):
@@ -40,13 +43,16 @@ class PostgresSink(BaseSink):
         )
         self.postgres_client.open()
 
-    def write(self, data: Dict):
-        self.batch_write([data])
+    def write(self, message: Dict):
+        self.batch_write([message])
 
-    def batch_write(self, data: List[Dict]):
-        self._print(f'Batch ingest {len(data)} records, time={time.time()}. Sample: {data[0]}')
+    def batch_write(self, messages: List[Dict]):
+        if not messages:
+            return
+        self._print(
+            f'Batch ingest {len(messages)} records, time={time.time()}. Sample: {messages[0]}')
 
-        df = pd.DataFrame.from_records(data)
+        df = pd.DataFrame.from_records(messages)
         self.postgres_client.export(
             df,
             self.config.schema,
@@ -54,6 +60,9 @@ class PostgresSink(BaseSink):
             if_exists=ExportWritePolicy.APPEND,
             unique_conflict_method=self.config.unique_conflict_method,
             unique_constraints=self.config.unique_constraints,
+            allow_reserved_words=self.config.allow_reserved_words,
+            auto_clean_name=self.config.auto_clean_name,
+            case_sensitive=self.config.case_sensitive,
         )
 
     def destroy(self):

@@ -32,6 +32,7 @@ BackfillPolicy.allow_actions([
 
 BackfillPolicy.allow_read([
     'pipeline_run_dates',
+    'run_status_counts',
     'total_run_count',
 ] + BackfillPresenter.default_attributes, scopes=[
     OauthScope.CLIENT_PRIVATE,
@@ -62,6 +63,7 @@ BackfillPolicy.allow_write([
     'interval_type',
     'interval_units',
     'name',
+    'settings',
     'start_datetime',
     'status',
     'variables',
@@ -81,6 +83,7 @@ BackfillPolicy.allow_query([
 ], condition=lambda policy: policy.has_at_least_viewer_role())
 
 BackfillPolicy.allow_query([
+    'include_run_count',
     'pipeline_uuid',
 ], scopes=[
     OauthScope.CLIENT_PRIVATE,

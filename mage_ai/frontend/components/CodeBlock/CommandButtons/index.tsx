@@ -4,6 +4,8 @@ import { useMutation } from 'react-query';
 
 import AddChartMenu from './AddChartMenu';
 import BlockType, {
+  BLOCK_TYPES_NOT_SUPPORTED_WITH_CHARTS,
+  BlockLanguageEnum,
   BlockTypeEnum,
 } from '@interfaces/BlockType';
 import Button from '@oracle/elements/Button';
@@ -69,7 +71,7 @@ type CommandButtonsProps = {
   addNewBlock: (block: BlockType) => Promise<any>;
   block: BlockType;
   blockContent?: string;
-  fetchFileTree: () => void;
+  fetchFileTree?: () => void;
   fetchPipeline: () => void;
   hideExtraButtons?: boolean;
   isEditingBlock?: boolean;
@@ -138,6 +140,7 @@ function CommandButtons({
   const {
     all_upstream_blocks_executed: upstreamBlocksExecuted = true,
     color: blockColor,
+    language,
     metadata,
     type,
     uuid,
@@ -415,7 +418,10 @@ function CommandButtons({
               }}
               small
             >
-              {metadata?.dbt?.block?.snapshot ? 'Run snapshot' : 'Compile & preview'}
+              {(language === BlockLanguageEnum.YAML
+                ? 'Run command'
+                : 'Compile & preview'
+              )}
             </Button>
           )}
           <ClickOutside
@@ -525,10 +531,11 @@ function CommandButtons({
         </Spacing>
       )}
 
-      {!hideExtraButtons && ([
-        BlockTypeEnum.DATA_LOADER,
-        BlockTypeEnum.TRANSFORMER,
-      ].includes(block.type) && !isStreaming && !isIntegration) && (
+      {!hideExtraButtons && !(BLOCK_TYPES_NOT_SUPPORTED_WITH_CHARTS.includes(block.type)
+      && (BlockTypeEnum.DBT !== block.type || BlockLanguageEnum.YAML !== block?.language)
+      && !isStreaming
+      && !isIntegration)
+      && (
         <>
           <Spacing
             ml={PADDING_UNITS}
@@ -720,6 +727,8 @@ function CommandButtons({
                 blocksMapping,
                 fetchFileTree,
                 fetchPipeline,
+                openSidekickView,
+                project,
                 savePipelineContent,
                 updatePipeline,
               },

@@ -1,7 +1,9 @@
+import NextLink from 'next/link';
 import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import cronstrue from 'cronstrue';
@@ -10,7 +12,9 @@ import { toast } from 'react-toastify';
 import { useMutation } from 'react-query';
 import { useRouter } from 'next/router';
 
+import BookmarkValues from '../BookmarkValues';
 import Button from '@oracle/elements/Button';
+import ButtonTabs from '@oracle/components/Tabs/ButtonTabs';
 import Calendar, { TimeType } from '@oracle/components/Calendar';
 import Checkbox from '@oracle/elements/Checkbox';
 import ClickOutside from '@oracle/components/ClickOutside';
@@ -24,13 +28,18 @@ import Divider from '@oracle/elements/Divider';
 import Flex from '@oracle/components/Flex';
 import FlexContainer from '@oracle/components/FlexContainer';
 import Headline from '@oracle/elements/Headline';
+import InteractionType from '@interfaces/InteractionType';
 import Link from '@oracle/elements/Link';
 import List from '@oracle/elements/List';
+import OverwriteVariables from '../OverwriteVariables';
 import PipelineDetailPage from '@components/PipelineDetailPage';
+import PipelineInteractionType from '@interfaces/PipelineInteractionType';
 import PipelineScheduleType, {
   PipelineScheduleSettingsType,
   ScheduleIntervalEnum,
+  ScheduleStatusEnum,
   ScheduleTypeEnum,
+  VARIABLE_BOOKMARK_VALUES_KEY,
 } from '@interfaces/PipelineScheduleType';
 import PipelineType, { PipelineTypeEnum } from '@interfaces/PipelineType';
 import PipelineVariableType, { GLOBAL_VARIABLES_UUID } from '@interfaces/PipelineVariableType';
@@ -42,19 +51,25 @@ import TagsAutocompleteInputField from '@components/Tags/TagsAutocompleteInputFi
 import Text from '@oracle/elements/Text';
 import TextInput from '@oracle/elements/Inputs/TextInput';
 import ToggleSwitch from '@oracle/elements/Inputs/ToggleSwitch';
+import TriggerInteractions from './TriggerInteractions';
 import api from '@api';
+import useProject from '@utils/models/project/useProject';
 import {
   Add,
   Alphabet,
   CalendarDate,
   Code,
+  Lightning,
+  PaginateArrowLeft,
+  PaginateArrowRight,
   Schedule,
   Switch,
   Trash,
 } from '@oracle/icons';
 import { BlockTypeEnum } from '@interfaces/BlockType';
 import { CardStyle } from './index.style';
-import { MAGE_VARIABLES_KEY } from '@interfaces/PipelineRunType';
+import { DATE_FORMAT_LONG_NO_SEC } from '@utils/date';
+import { FeatureUUIDEnum } from '@interfaces/ProjectType';
 import {
   PADDING_UNITS,
   UNIT,
@@ -62,80 +77,174 @@ import {
   UNITS_BETWEEN_SECTIONS,
 } from '@oracle/styles/units/spacing';
 import { PageNameEnum } from '@components/PipelineDetailPage/constants';
+import { RunStatus } from '@interfaces/BlockRunType';
 import {
+  SUBHEADER_TABS,
+  SUBHEADER_TAB_CUSTOMIZE,
+  SUBHEADER_TAB_REVIEW,
+  SUBHEADER_TAB_SETTINGS,
+} from './constants';
+import {
+  TIME_UNIT_TO_SECONDS,
+  checkIfCustomInterval,
   convertSeconds,
   convertToSeconds,
-  getTimeInUTC,
+  convertUtcCronExpressionToLocalTimezone,
+  getDatetimeFromDateAndTime,
   getTriggerApiEndpoint,
-  TIME_UNIT_TO_SECONDS,
+  getTriggerTypes,
 } from '../utils';
+import { blocksWithStreamsWithIncrementalReplicationMethod } from '@utils/models/pipeline';
+import { convertValueToVariableDataType } from '@utils/models/interaction';
+import { getColorsForBlockType } from '@components/CodeBlock/index.style';
+import { getDateAndTimeObjFromDatetimeString } from '@oracle/components/Calendar/utils';
 import { getFormattedVariables, parseVariables } from '@components/Sidekick/utils';
 import { indexBy, pushUnique, range, removeAtIndex } from '@utils/array';
 import { isEmptyObject, selectKeys } from '@utils/hash';
-import { isNumeric, pluralize } from '@utils/string';
+import { isJsonString, isNumeric, pluralize } from '@utils/string';
 import { onSuccess } from '@api/utils/response';
-
-const getTriggerTypes = (
-  isStreamingPipeline?: boolean,
-): {
-  description: () => string;
-  label: () => string;
-  uuid: ScheduleTypeEnum;
-}[] => {
-  const triggerTypes = [
-    {
-      description: () => 'This pipeline will run continuously on an interval or just once.',
-      label: () => 'Schedule',
-      uuid: ScheduleTypeEnum.TIME,
-    },
-    {
-      description: () => 'This pipeline will run when a specific event occurs.',
-      label: () => 'Event',
-      uuid: ScheduleTypeEnum.EVENT,
-    },
-    {
-      description: () => 'Run this pipeline when you make an API call.',
-      label: () => 'API',
-      uuid: ScheduleTypeEnum.API,
-    },
-  ];
-
-  return isStreamingPipeline
-    ? triggerTypes.slice(0, 1)
-    : triggerTypes;
-};
+import { shouldDisplayLocalTimezone } from '@components/settings/workspace/utils';
 
 type EditProps = {
+  creatingWithLimitation?: boolean;
   errors: ErrorsType;
-  fetchPipelineSchedule: () => void;
+  fetchPipelineSchedule?: () => void;
+  onCancel?: () => void;
   pipeline: PipelineType;
   pipelineSchedule?: PipelineScheduleType;
   setErrors: (errors: ErrorsType) => void;
+  useCreateScheduleMutation?: any;
   variables?: PipelineVariableType[];
 };
 
 function Edit({
+  creatingWithLimitation: creatingWithLimitationProp,
   errors,
   fetchPipelineSchedule,
+  onCancel,
   pipeline,
   pipelineSchedule,
   setErrors,
   variables,
+  useCreateScheduleMutation,
 }: EditProps) {
+  const {
+    project,
+  } = useProject();
+  const containerRef = useRef(null);
+
   const router = useRouter();
+  const displayLocalTimezone = shouldDisplayLocalTimezone();
   const pipelineUUID = pipeline?.uuid;
-  const pipelineScheduleID = pipelineSchedule?.id;
+  const pipelineScheduleID = useMemo(() => pipelineSchedule?.id, [pipelineSchedule]);
   const isStreamingPipeline = pipeline?.type === PipelineTypeEnum.STREAMING;
 
+  const bookmarkValuesOriginal = useMemo(() => pipelineSchedule?.variables?.[VARIABLE_BOOKMARK_VALUES_KEY], [
+    pipelineSchedule,
+  ]);
+  const [bookmarkValues, setBookmarkValues] = useState<{ BookmarkValuesMapping }>(
+    // @ts-ignore
+    bookmarkValuesOriginal
+      ? typeof bookmarkValuesOriginal === 'string' && isJsonString(bookmarkValuesOriginal)
+        ? JSON.stringify(bookmarkValuesOriginal)
+        : bookmarkValuesOriginal
+      : null,
+  );
   const [eventMatchers, setEventMatchers] = useState<EventMatcherType[]>([]);
-  const [overwriteVariables, setOverwriteVariables] = useState<boolean>(false);
+  const [overwriteVariables, setOverwriteVariables] = useState<boolean>(true);
   const [enableSLA, setEnableSLA] = useState<boolean>(false);
+  const [useHeaderUrl, setUseHeaderUrl] = useState<boolean>(false);
 
-  const [settings, setSettings] = useState<PipelineScheduleSettingsType>();
+  const [settings, setSettings] = useState<PipelineScheduleSettingsType>(null);
   const [runtimeVariables, setRuntimeVariables] = useState<{ [ variable: string ]: string }>({});
   const [schedule, setSchedule] = useState<PipelineScheduleType>(null);
+  const [variablesFromInteractions, setVariablesFromInteractions] = useState<{
+    [key: string]: any;
+  }>(null);
   const [showCalendar, setShowCalendar] = useState<boolean>(false);
   const [customInterval, setCustomInterval] = useState<string>(null);
+
+  // const {
+  //   data: dataClientPage,
+  // } = api.client_pages.detail('pipeline_schedule:create', {
+  //   'pipeline_schedules[]': [pipelineScheduleID],
+  //   'pipelines[]': [pipelineUUID],
+  // }, {}, {
+  //   key: `Triggers/Edit/${pipelineUUID}/${pipelineScheduleID}`,
+  //   pauseFetch: !pipelineUUID || !pipelineScheduleID,
+  // });
+  // const clientPage = useMemo(() => dataClientPage?.client_page, [dataClientPage]);
+
+  const [selectedSubheaderTabUUID, setSelectedSubheaderTabUUID] =
+    useState<string>(SUBHEADER_TABS[0].uuid);
+
+  const isInteractionsEnabled =
+    useMemo(() => !!project?.features?.[FeatureUUIDEnum.INTERACTIONS], [
+      project?.features,
+    ]);
+
+  const creatingWithLimitation = useMemo(() => !pipelineScheduleID && creatingWithLimitationProp, [
+    creatingWithLimitationProp,
+    pipelineScheduleID,
+  ]);
+
+  const {
+    data: dataPipelineInteraction,
+  } = api.pipeline_interactions.detail(
+    isInteractionsEnabled && pipelineUUID,
+    {
+      filter_for_permissions: 1,
+    },
+  );
+
+  const {
+    data: dataInteractions,
+  } = api.interactions.pipeline_interactions.list(isInteractionsEnabled && pipelineUUID);
+
+  const pipelineInteraction: PipelineInteractionType =
+    useMemo(() => dataPipelineInteraction?.pipeline_interaction || {}, [
+      dataPipelineInteraction,
+    ]);
+  const interactions: InteractionType[] =
+    useMemo(() => dataInteractions?.interactions || [], [
+      dataInteractions,
+    ]);
+  const pipelineHasInteractions =
+    useMemo(() => isInteractionsEnabled
+      && Object.keys(pipelineInteraction?.blocks || {})?.length >= 1,
+    [
+      isInteractionsEnabled,
+      pipelineInteraction,
+    ]);
+
+  const shouldShowInteractions = useMemo(() => !!pipelineScheduleID && pipelineHasInteractions, [
+    pipelineHasInteractions,
+    pipelineScheduleID,
+  ]);
+
+  const permittedScheduleTypesAndScheduleIntervals = useMemo(() => {
+    const mapping = {};
+
+    // @ts-ignore
+    pipelineInteraction?.permissions?.forEach(({ triggers }) => {
+      triggers?.forEach(({
+        schedule_interval: scheduleInterval,
+        schedule_type: scheduleType,
+      }) => {
+        if (!mapping?.[scheduleType]) {
+          mapping[scheduleType] = {};
+        }
+
+        if (scheduleInterval) {
+          mapping[scheduleType][scheduleInterval] = true;
+        }
+      });
+    });
+
+    return mapping;
+  }, [
+    pipelineInteraction,
+  ]);
 
   const formattedVariables = useMemo(() => getFormattedVariables(
     variables,
@@ -149,18 +258,20 @@ function Edit({
     name,
     schedule_interval: scheduleInterval,
     schedule_type: scheduleType,
-    settings: settingsInit = {},
-    sla,
+    settings: settingsInit,
     start_time: startTime,
     tags,
     variables: scheduleVariablesInit = {},
-  } = schedule || {};
+  } = useMemo(() => schedule || {}, [schedule]);
 
   useEffect(() => {
-    if (settingsInit) {
+    if (!settings && settingsInit) {
       setSettings(settingsInit);
     }
-  }, [settingsInit]);
+  }, [
+    settings,
+    settingsInit,
+  ]);
 
   const [date, setDate] = useState<Date>(null);
   const [time, setTime] = useState<TimeType>({ hour: '00', minute: '00' });
@@ -189,7 +300,7 @@ function Edit({
       onSuccess: (response: any) => onSuccess(
         response, {
           callback: () => {
-            fetchPipelineSchedule();
+            fetchPipelineSchedule?.();
             router.push(
               '/pipelines/[pipeline]/triggers/[...slug]',
               `/pipelines/${pipelineUUID}/triggers/${pipelineScheduleID}`,
@@ -208,15 +319,15 @@ function Edit({
 
   useEffect(
     () => {
-      if (startTime) {
-        const dateTimeSplit = startTime.split(' ');
-        const timePart = dateTimeSplit[1];
-        setDate(getTimeInUTC(startTime));
-        setTime({
-          hour: timePart.substring(0, 2),
-          minute: timePart.substring(3, 5),
-        });
+      const currentDatetimeString = moment.utc().format(DATE_FORMAT_LONG_NO_SEC);
+      const startDatetimeObj = getDateAndTimeObjFromDatetimeString(
+        startTime || currentDatetimeString,
+        { localTimezone: displayLocalTimezone },
+      );
+      setDate(startDatetimeObj?.date);
+      setTime(startDatetimeObj?.time);
 
+      if (startTime) {
         const mt = moment(startTime).utc();
         setLandingTimeData({
           dayOfMonth: mt.date(),
@@ -225,16 +336,9 @@ function Edit({
           minute: mt.minutes(),
           second: mt.seconds(),
         });
-      } else {
-        const currentDatetime = new Date();
-        setDate(currentDatetime);
-        setTime({
-          hour: String(currentDatetime.getUTCHours()).padStart(2, '0'),
-          minute: String(currentDatetime.getUTCMinutes()).padStart(2, '0'),
-        });
       }
     },
-    [startTime],
+    [displayLocalTimezone, startTime],
   );
 
   useEffect(
@@ -265,8 +369,7 @@ function Edit({
   );
 
   const isCustomInterval = useMemo(
-    () => scheduleInterval &&
-      !Object.values(ScheduleIntervalEnum).includes(scheduleInterval as ScheduleIntervalEnum),
+    () => checkIfCustomInterval(scheduleInterval),
     [scheduleInterval],
   );
   const readableCronExpression = useMemo(() => (
@@ -285,11 +388,13 @@ function Edit({
     () => {
       if (pipelineSchedule && !schedule) {
         setEventMatchers(pipelineSchedule.event_matchers);
-        const custom = pipelineSchedule?.schedule_interval &&
-          !Object.values(ScheduleIntervalEnum).includes(pipelineSchedule?.schedule_interval as ScheduleIntervalEnum);
+        const custom = checkIfCustomInterval(pipelineSchedule?.schedule_interval);
 
         if (custom) {
-          setCustomInterval(pipelineSchedule?.schedule_interval);
+          const customIntervalInit = displayLocalTimezone
+            ? convertUtcCronExpressionToLocalTimezone(pipelineSchedule?.schedule_interval)
+            : pipelineSchedule?.schedule_interval;
+          setCustomInterval(customIntervalInit);
           setSchedule({
             ...pipelineSchedule,
             schedule_interval: 'custom',
@@ -320,6 +425,7 @@ function Edit({
       }
     },
     [
+      displayLocalTimezone,
       isStreamingPipeline,
       pipelineSchedule,
       schedule,
@@ -356,7 +462,12 @@ function Edit({
       event_matchers: [],
       schedule_interval: null,
       start_time: null,
-      variables: parseVariables(runtimeVariables),
+      variables: parseVariables({
+        ...runtimeVariables,
+        ...(bookmarkValues ? {
+          [VARIABLE_BOOKMARK_VALUES_KEY]: bookmarkValues,
+        } : {}),
+      }),
     };
 
     if (showLandingTime) {
@@ -391,9 +502,21 @@ function Edit({
     } else if (ScheduleTypeEnum.EVENT === schedule.schedule_type) {
       data.event_matchers = eventMatchers;
     } else {
-      data.schedule_interval = isCustomInterval ? customInterval : schedule.schedule_interval;
-      data.start_time = date && time?.hour && time?.minute
-        ? `${date.toISOString().split('T')[0]} ${time?.hour}:${time?.minute}:00`
+      data.schedule_interval = isCustomInterval
+        ? ((displayLocalTimezone && !cronExpressionInvalid && !!customInterval)
+          ? convertUtcCronExpressionToLocalTimezone(customInterval, true)
+          : customInterval
+        )
+        : schedule.schedule_interval;
+      data.start_time = (date && time?.hour && time?.minute)
+        ? getDatetimeFromDateAndTime(
+          date,
+          time,
+          {
+            convertToUtc: displayLocalTimezone,
+            includeSeconds: true,
+            localTimezone: displayLocalTimezone,
+          })
         : null;
     }
 
@@ -420,11 +543,17 @@ function Edit({
 
     // @ts-ignore
     updateSchedule({
-      pipeline_schedule: data,
+      pipeline_schedule: {
+        ...data,
+        variables: variablesFromInteractions || data?.variables,
+      },
     });
   }, [
+    bookmarkValues,
+    cronExpressionInvalid,
     customInterval,
     date,
+    displayLocalTimezone,
     enableSLA,
     eventMatchers,
     isCustomInterval,
@@ -436,6 +565,7 @@ function Edit({
     showLandingTime,
     time,
     updateSchedule,
+    variablesFromInteractions,
   ]);
 
   const runtimeAverage = useMemo(() => {
@@ -700,9 +830,8 @@ function Edit({
       }}
       placeholder="Description"
       value={description}
-    />
+    />,
   ]), [description]);
-
   const detailsMemo = useMemo(() => {
     const rows = [
       triggerNameRowEl,
@@ -732,75 +861,38 @@ function Edit({
             placeholder="Choose the frequency to run"
             value={scheduleInterval}
           >
-            {Object.values(ScheduleIntervalEnum).map(value => (
-              <option key={value} value={value}>
-                {value.substring(1)}
+            {Object.values(ScheduleIntervalEnum).reduce((acc, value) => {
+              if (creatingWithLimitation
+                && !permittedScheduleTypesAndScheduleIntervals?.[ScheduleTypeEnum.TIME]?.[value]
+              ) {
+                return acc;
+              }
+
+              return acc.concat(
+                <option key={value} value={value}>
+                  {value.substring(1)}
+                </option>,
+              );
+            }, [])}
+            {!creatingWithLimitation && (
+              <option key="custom" value="custom">
+                custom
               </option>
-            ))}
-            <option key="custom" value="custom">
-              custom
-            </option>
+            )}
           </Select>
 
-          <Spacing mt={1} p={1}>
-            <Text muted small>
-              If you don’t see the frequency option you need, select <Text inline monospace small>
-                custom
-              </Text> and enter CRON syntax.
-            </Text>
-          </Spacing>
+          {!creatingWithLimitation && (
+            <Spacing mt={1} p={1}>
+              <Text muted small>
+                If you don&#39;t see the frequency option you need, select <Text inline monospace small>
+                  custom
+                </Text> and enter CRON syntax.
+              </Text>
+            </Spacing>
+          )}
         </div>,
       ],
     ];
-
-    rows.push([
-      <FlexContainer
-        alignItems="center"
-        key="frequency"
-      >
-        <Switch default size={1.5 * UNIT} />
-        <Spacing mr={1} />
-        <Text default>
-          Enable landing time
-        </Text>
-      </FlexContainer>,
-
-      <div key="frequency_input">
-        <ToggleSwitch
-          checked={landingTimeEnabled}
-          disabled={landingTimeDisabled}
-          onCheck={() => {
-            setSettings(prev => ({
-              ...prev,
-              landing_time_enabled: !landingTimeEnabled,
-            }));
-          }}
-        />
-
-        <Spacing mt={1} p={1}>
-          {landingTimeDisabled && (
-            <Text muted small>
-              In order to enable landing time, the trigger’s frequency must
-              be <Text inline monospace small>{ScheduleIntervalEnum.HOURLY}
-              </Text>, <Text inline monospace small>
-                {ScheduleIntervalEnum.DAILY}
-              </Text>, <Text inline monospace small>
-                {ScheduleIntervalEnum.WEEKLY}
-              </Text>, or <Text inline monospace small>
-                {ScheduleIntervalEnum.MONTHLY}
-              </Text>.
-            </Text>
-          )}
-          {!landingTimeDisabled && (
-            <Text muted small>
-              Instead of starting at a specific time,
-              this trigger will schedule pipeline runs at a time where it will finish
-              by the specified time below.
-            </Text>
-          )}
-        </Spacing>
-      </div>,
-    ]);
 
     if (showLandingTime) {
       rows.push([
@@ -852,7 +944,10 @@ function Edit({
                 onClick={() => setShowCalendar(val => !val)}
                 placeholder="YYYY-MM-DD HH:MM"
                 value={date
-                  ? `${date.toISOString().split('T')[0]} ${time?.hour}:${time?.minute}`
+                  ? getDatetimeFromDateAndTime(
+                    date,
+                    time,
+                    { localTimezone: displayLocalTimezone })
                   : ''
                 }
               />
@@ -865,6 +960,7 @@ function Edit({
                 style={{ position: 'relative' }}
               >
                 <Calendar
+                  localTime={displayLocalTimezone}
                   selectedDate={date}
                   selectedTime={time}
                   setSelectedDate={setDate}
@@ -914,6 +1010,8 @@ function Edit({
                 [minute] [hour] [day(month)] [month] [day(week)]
               </Text>
 
+              <Spacing mb="2px" />
+
               {!customInterval
                 ? null
                 : (
@@ -929,6 +1027,24 @@ function Edit({
                   </Text>
                 )
               }
+
+              {displayLocalTimezone && (
+                <>
+                  <Text bold inline small warning>
+                    Note:&nbsp;
+                  </Text>
+                  <Text inline small>
+                    If you have the display_local_timezone setting enabled, the local cron expression
+                    above will match your local timezone only
+                    <br />
+                    if the minute and hour values are single
+                    values without any special characters, such as the comma, hyphen, or slash.
+                    <br />
+                    You can still use cron expressions with special characters for the minute/hour
+                    values, but it will be based in UTC time.
+                  </Text>
+                </>
+              )}
             </Spacing>
           </div>,
         ],
@@ -955,11 +1071,14 @@ function Edit({
     cronExpressionInvalid,
     customInterval,
     date,
+    displayLocalTimezone,
+    creatingWithLimitation,
     isCustomInterval,
     isStreamingPipeline,
     landingTimeDisabled,
     landingTimeEnabled,
     landingTimeInputs,
+    permittedScheduleTypesAndScheduleIntervals,
     readableCronExpression,
     runtimeAverage,
     scheduleInterval,
@@ -1163,7 +1282,7 @@ function Edit({
   ]);
 
   const apiMemo = useMemo(() => {
-    const url = getTriggerApiEndpoint(pipelineSchedule);
+    const url = getTriggerApiEndpoint(pipelineSchedule, useHeaderUrl);
 
     return (
       <>
@@ -1202,7 +1321,52 @@ function Edit({
               withCopyIcon
             />
           </Spacing>
+
+          <Spacing mt={UNITS_BETWEEN_ITEMS_IN_SECTIONS}>
+            <FlexContainer alignItems="center">
+              <Spacing mr={1}>
+                <ToggleSwitch
+                  checked={useHeaderUrl}
+                  onCheck={() => setUseHeaderUrl(!useHeaderUrl)}
+                />
+              </Spacing>
+              <Text muted>
+                Show alternative endpoint to pass token in headers
+              </Text>
+            </FlexContainer>
+          </Spacing>
         </Spacing>
+
+        {useHeaderUrl && (
+          <Spacing mb={2} mt={5} px={PADDING_UNITS}>
+            <Headline>
+              Headers
+            </Headline>
+
+            <Text muted>
+              You will need to include the following headers in your request to authenticate
+              with the server.
+            </Text>
+
+            <Spacing mt={UNITS_BETWEEN_ITEMS_IN_SECTIONS}>
+              <CopyToClipboard
+                copiedText={`Content-Type: application/json
+  Authorization: Bearer ${pipelineSchedule?.token}
+  `}
+                withCopyIcon
+              >
+                <CodeBlock
+                  language="json"
+                  small
+                  source={`
+      Content-Type: application/json
+      Authorization: Bearer ${pipelineSchedule?.token}
+  `}
+                />
+              </CopyToClipboard>
+            </Spacing>
+          </Spacing>
+        )}
 
         <Spacing mb={2} mt={5} px={PADDING_UNITS}>
           <Headline>
@@ -1254,7 +1418,20 @@ function Edit({
             <CodeBlock
               language="bash"
               small
-              source={`
+              source={useHeaderUrl ? `
+    curl -X POST ${url} \\
+      --header 'Content-Type: application/json' \\
+      --header 'Authorization: Bearer ${pipelineSchedule?.token}' \\
+      --data '
+    {
+      "pipeline_run": {
+        "variables": {
+          "key1": "value1",
+          "key2": "value2"
+        }
+      }
+    }'
+  ` : `
     curl -X POST ${url} \\
       --header 'Content-Type: application/json' \\
       --data '
@@ -1272,7 +1449,13 @@ function Edit({
         </Spacing>
       </>
     );
-  }, [pipelineSchedule, triggerDescriptionRowEl, triggerNameRowEl]);
+  }, [
+    pipelineSchedule,
+    setUseHeaderUrl,
+    triggerDescriptionRowEl,
+    triggerNameRowEl,
+    useHeaderUrl,
+  ]);
 
   const saveButtonDisabled = !scheduleType || (
     ScheduleTypeEnum.TIME === scheduleType
@@ -1289,33 +1472,67 @@ function Edit({
       pipeline,
     ]);
 
-  // TODO: allow users to set their own custom runtime variables.
+  const blocksWithStreamsMapping = useMemo(() => pipeline?.blocks
+    ? blocksWithStreamsWithIncrementalReplicationMethod(pipeline)
+    : null,
+  [
+    pipeline,
+  ]);
+
   const afterMemo = useMemo(() => (
-    <Spacing p={PADDING_UNITS}>
-      <Spacing mb={UNITS_BETWEEN_SECTIONS}>
+    <Spacing py={PADDING_UNITS}>
+      <Spacing mb={UNITS_BETWEEN_SECTIONS} px={PADDING_UNITS}>
         <Headline>
           Run settings
         </Headline>
 
         <Spacing mt={UNITS_BETWEEN_ITEMS_IN_SECTIONS}>
           {!isStreamingPipeline && (
-            <Spacing mb={UNITS_BETWEEN_ITEMS_IN_SECTIONS}>
-              <Text>
-                Set a timeout for each run of this trigger (optional) 
-              </Text>
-              <Spacing mb={1} />
-              <TextInput
-                label="Timeout (in seconds)"
-                onChange={e => setSettings(prev => ({
-                  ...prev,
-                  timeout: e.target.value,
-                }))}
-                primary
-                setContentOnMount
-                type="number"
-                value={settings?.timeout}
-              />
-            </Spacing>
+            <>
+              <Spacing mb={UNITS_BETWEEN_ITEMS_IN_SECTIONS}>
+                <Text>
+                  Set a timeout for each run of this trigger (optional)
+                </Text>
+                <Spacing mb={1} />
+                <TextInput
+                  label="Timeout (in seconds)"
+                  onChange={e => setSettings(prev => ({
+                    ...prev,
+                    timeout: e.target.value,
+                  }))}
+                  primary
+                  setContentOnMount
+                  type="number"
+                  value={settings?.timeout}
+                />
+              </Spacing>
+              <Spacing mb={UNITS_BETWEEN_ITEMS_IN_SECTIONS}>
+                <Text>
+                  Status for runs that exceed the timeout (default: failed)
+                </Text>
+                <Spacing mb={1} />
+                <Select
+                  fullWidth
+                  monospace
+                  onChange={(e) => {
+                    e.preventDefault();
+                    setSettings(s => ({
+                      ...s,
+                      timeout_status: e.target.value,
+                    }));
+                  }}
+                  placeholder="Timeout status"
+                  value={settings?.timeout_status}
+                >
+                  <option value={RunStatus.FAILED}>
+                    Failed
+                  </option>
+                  <option value={RunStatus.CANCELLED}>
+                    Cancelled
+                  </option>
+                </Select>
+              </Spacing>
+            </>
           )}
           <FlexContainer alignItems="center">
             <Spacing mr={2}>
@@ -1411,91 +1628,90 @@ function Edit({
         </Spacing>
 
         {ScheduleTypeEnum.TIME === scheduleType && (
-          <Spacing mt={UNITS_BETWEEN_ITEMS_IN_SECTIONS}>
-            <FlexContainer alignItems="center">
-              <Checkbox
-                checked={settings?.skip_if_previous_running}
-                label="Skip run if previous run still in progress"
-                onClick={() => setSettings(prev => ({
-                  ...prev,
-                  skip_if_previous_running: !settings?.skip_if_previous_running,
-                }))}
-              />
-            </FlexContainer>
-          </Spacing>
+          <>
+            <Spacing mt={PADDING_UNITS}>
+              <FlexContainer alignItems="center">
+                <Checkbox
+                  checked={settings?.skip_if_previous_running}
+                  label="Skip run if previous run still in progress"
+                  onClick={() => setSettings(prev => ({
+                    ...prev,
+                    skip_if_previous_running: !settings?.skip_if_previous_running,
+                  }))}
+                />
+              </FlexContainer>
+            </Spacing>
+            <Spacing mt={PADDING_UNITS}>
+              <FlexContainer alignItems="center">
+                <Checkbox
+                  checked={settings?.create_initial_pipeline_run}
+                  label="Create initial pipeline run if start date is before current execution period"
+                  onClick={() => setSettings(prev => ({
+                    ...prev,
+                    create_initial_pipeline_run: !settings?.create_initial_pipeline_run,
+                  }))}
+                />
+              </FlexContainer>
+            </Spacing>
+          </>
         )}
       </Spacing>
 
-      <Spacing mb={UNITS_BETWEEN_SECTIONS}>
-        <Headline>
-          Runtime variables
-        </Headline>
+      <Spacing mb={UNITS_BETWEEN_SECTIONS} >
+        <Spacing px={PADDING_UNITS}>
+          <Headline>
+            Runtime variables
+          </Headline>
 
-        {!isEmptyObject(formattedVariables) && (
-          <Spacing mt={UNITS_BETWEEN_ITEMS_IN_SECTIONS}>
-            <FlexContainer alignItems="center">
-              <Spacing mr={2}>
-                <ToggleSwitch
-                  checked={overwriteVariables}
-                  onCheck={setOverwriteVariables}
-                />
-              </Spacing>
-              <Text monospace muted>
-                Overwrite global variables
+          {isEmptyObject(formattedVariables) && (
+            <Spacing mt={1}>
+              <Text default>
+                This pipeline has no runtime variables.
               </Text>
-            </FlexContainer>
+              <NextLink
+                as={`/pipelines/${pipelineUUID}/edit?sideview=variables`}
+                href={'/pipelines/[pipeline]/edit'}
+                passHref
+              >
+                <Link primary>
+                  Click here
+                </Link>
+              </NextLink> <Text default inline>
+                to add variables to this pipeline.
+              </Text>
+            </Spacing>
+          )}
+        </Spacing>
 
-            {overwriteVariables
-              && runtimeVariables
-              && Object.entries(runtimeVariables).length > 0
-              && (
-              <Spacing mt={1}>
-                <Table
-                  columnFlex={[null, 1]}
-                  columns={[
-                    {
-                      uuid: 'Variable',
-                    },
-                    {
-                      uuid: 'Value',
-                    },
-                  ]}
-                  rows={Object.entries(runtimeVariables).reduce((acc, [uuid, value]) => {
-                    if (MAGE_VARIABLES_KEY === uuid) {
-                      return acc;
-                    }
-
-                    return acc.concat([[
-                      <Text
-                        default
-                        key={`variable_${uuid}`}
-                        monospace
-                      >
-                        {uuid}
-                      </Text>,
-                      <TextInput
-                        borderless
-                        key={`variable_uuid_input_${uuid}`}
-                        monospace
-                        onChange={(e) => {
-                          e.preventDefault();
-                          setRuntimeVariables(vars => ({
-                            ...vars,
-                            [uuid]: e.target.value,
-                          }));
-                        }}
-                        paddingHorizontal={0}
-                        placeholder="Variable value"
-                        value={value}
-                      />,
-                    ]]);
-                  }, [])}
-                />
-              </Spacing>
-            )}
-          </Spacing>
-        )}
+        <Spacing mt={UNITS_BETWEEN_ITEMS_IN_SECTIONS}>
+          <OverwriteVariables
+            enableVariablesOverwrite
+            // @ts-ignore
+            originalVariables={pipelineSchedule?.variables}
+            runtimeVariables={runtimeVariables}
+            setRuntimeVariables={setRuntimeVariables}
+          />
+        </Spacing>
       </Spacing>
+
+      {blocksWithStreamsMapping && Object.keys(blocksWithStreamsMapping || {})?.length >= 1 && (
+        <Spacing mb={UNITS_BETWEEN_SECTIONS}>
+          <Spacing px={PADDING_UNITS}>
+            <Headline>
+              Override bookmark values
+            </Headline>
+          </Spacing>
+
+          <BookmarkValues
+            bookmarkValues={bookmarkValues}
+            // @ts-ignore
+            originalBookmarkValues={pipelineSchedule?.variables?.[VARIABLE_BOOKMARK_VALUES_KEY]}
+            pipeline={pipeline}
+            // @ts-ignore
+            setBookmarkValues={setBookmarkValues}
+          />
+        </Spacing>
+      )}
 
       {dbtBlocks?.length >= 1 && (
         <Spacing mb={UNITS_BETWEEN_SECTIONS}>
@@ -1512,17 +1728,21 @@ function Edit({
       )}
     </Spacing>
   ), [
+    blocksWithStreamsMapping,
+    bookmarkValues,
     dbtBlocks,
     enableSLA,
     formattedVariables,
     isStreamingPipeline,
-    overwriteVariables,
+    pipeline,
+    pipelineSchedule?.variables,
+    pipelineUUID,
     runtimeVariables,
     schedule,
     scheduleType,
     scheduleVariables,
+    setBookmarkValues,
     setEnableSLA,
-    setOverwriteVariables,
     setRuntimeVariables,
     settings,
   ]);
@@ -1534,10 +1754,251 @@ function Edit({
       tags,
     ]);
 
+  const triggerTypesForPipeline = useMemo(() => getTriggerTypes(isStreamingPipeline), [
+    isStreamingPipeline,
+  ]);
+
+  const triggerInteractionsMemo = useMemo(() => (
+    <TriggerInteractions
+      containerRef={containerRef}
+      date={date}
+      interactions={interactions}
+      pipeline={pipeline}
+      pipelineInteraction={pipelineInteraction}
+      pipelineSchedule={schedule}
+      setVariables={(prev1) => {
+        setSchedule(prev2 => {
+          const variables = {
+            ...prev1(prev2?.variables || {}),
+          };
+
+          const variablesToUse = { ...variables };
+
+          interactions?.forEach((interaction) => {
+            Object.entries(interaction?.variables || {}).forEach(([
+              variableUUID,
+              {
+                types,
+              },
+            ]) => {
+              if (variablesToUse && variableUUID in variablesToUse) {
+                variablesToUse[variableUUID] = convertValueToVariableDataType(
+                  variablesToUse[variableUUID],
+                  types,
+                );
+              }
+            });
+          });
+
+          setVariablesFromInteractions(variablesToUse);
+
+          return {
+            ...prev2,
+            variables,
+          };
+        });
+      }}
+      showSummary={SUBHEADER_TAB_REVIEW.uuid === selectedSubheaderTabUUID}
+      time={time}
+      triggerTypes={triggerTypesForPipeline}
+      variables={schedule?.variables}
+    />
+  ), [
+  containerRef,
+  date,
+  interactions,
+  pipeline,
+  pipelineInteraction,
+  schedule,
+  selectedSubheaderTabUUID,
+  setSchedule,
+  setVariablesFromInteractions,
+  time,
+  triggerTypesForPipeline,
+]);
+
+  const isScheduleActive: boolean = useMemo(() => ScheduleStatusEnum.ACTIVE === schedule?.status, [
+    schedule,
+  ]);
+
+  const [createScheduleBase, { isLoading: isLoadingCreateSchedule }] = useCreateScheduleMutation
+    ? useCreateScheduleMutation?.(
+      (pipelineScheduleId) => router.push(
+        '/pipelines/[pipeline]/triggers/[...slug]',
+        `/pipelines/${pipeline?.uuid}/triggers/${pipelineScheduleId}`,
+      ),
+    )
+    : [null, { isLoading: false }];
+  const createSchedule = useCallback(() => {
+    createScheduleBase?.({
+      pipeline_schedule: {
+        ...schedule,
+        variables: variablesFromInteractions || schedule?.variables,
+      },
+    });
+  }, [
+    createScheduleBase,
+    variablesFromInteractions,
+    schedule,
+  ]);
+
+  const navigationButtonsMemo = useMemo(() => {
+    let buttonPrevious;
+    let buttonNext;
+
+    if (pipelineScheduleID) {
+      buttonPrevious = (
+        <Button
+          linkProps={{
+            as: `/pipelines/${pipelineUUID}/triggers/${pipelineScheduleID}`,
+            href: '/pipelines/[pipeline]/triggers/[...slug]',
+          }}
+          noHoverUnderline
+          outline
+          sameColorAsText
+        >
+          Cancel and go back
+        </Button>
+      );
+
+      buttonNext = (
+        <Button
+          onClick={onSave}
+          primary
+        >
+          Save trigger
+        </Button>
+      );
+    } else if (SUBHEADER_TAB_SETTINGS.uuid === selectedSubheaderTabUUID) {
+      buttonPrevious = (
+        <Button
+          onClick={() => onCancel?.()}
+          secondary
+        >
+          Cancel and go back
+        </Button>
+      );
+
+      buttonNext = (
+        <Button
+          afterIcon={<PaginateArrowRight />}
+          onClick={() => setSelectedSubheaderTabUUID(SUBHEADER_TAB_CUSTOMIZE.uuid)}
+          primary
+        >
+          Next: Customize
+        </Button>
+      );
+    } else if (SUBHEADER_TAB_CUSTOMIZE.uuid === selectedSubheaderTabUUID) {
+      buttonPrevious = (
+        <Button
+          beforeIcon={<PaginateArrowLeft />}
+          onClick={() => setSelectedSubheaderTabUUID(SUBHEADER_TAB_SETTINGS.uuid)}
+          secondary
+        >
+          Back: Settings
+        </Button>
+      );
+
+      buttonNext = (
+        <Button
+          afterIcon={<PaginateArrowRight />}
+          onClick={() => setSelectedSubheaderTabUUID(SUBHEADER_TAB_REVIEW.uuid)}
+          primary
+        >
+          Next: Review
+        </Button>
+      );
+    } else if (SUBHEADER_TAB_REVIEW.uuid === selectedSubheaderTabUUID) {
+      buttonPrevious = (
+        <Button
+          beforeIcon={<PaginateArrowLeft />}
+          onClick={() => setSelectedSubheaderTabUUID(SUBHEADER_TAB_CUSTOMIZE.uuid)}
+          secondary
+        >
+          Back: Customize
+        </Button>
+      );
+
+      buttonNext = (
+        <FlexContainer
+          alignItems="center"
+        >
+          <Button
+            beforeIcon={<Lightning />}
+            loading={isLoadingCreateSchedule}
+            onClick={() => createSchedule()}
+            primary
+          >
+            {pipelineScheduleID ? 'Save trigger' : 'Create trigger'}
+          </Button>
+
+          {!pipelineScheduleID && (
+            <>
+              <Spacing mr={PADDING_UNITS} />
+
+              <ToggleSwitch
+                checked={isScheduleActive}
+                compact
+                onCheck={(valFunc: (val: boolean) => boolean) => setSchedule(prev => ({
+                  ...prev,
+                  status: valFunc(isScheduleActive)
+                    ? ScheduleStatusEnum.ACTIVE
+                    : ScheduleStatusEnum.INACTIVE,
+                }))}
+              />
+
+              <Spacing mr={1} />
+
+              <Text
+                default={isScheduleActive}
+                muted={!isScheduleActive}
+                small
+              >
+                Set trigger to be active immediately after creating
+              </Text>
+            </>
+          )}
+        </FlexContainer>
+      );
+    }
+
+    return (
+      <Spacing p={PADDING_UNITS}>
+        <FlexContainer alignItems="center">
+          {buttonPrevious}
+
+          {buttonPrevious && buttonNext && <Spacing mr={PADDING_UNITS} />}
+
+          {buttonNext}
+        </FlexContainer>
+      </Spacing>
+    );
+  }, [
+    createSchedule,
+    isLoadingCreateSchedule,
+    isScheduleActive,
+    onCancel,
+    onSave,
+    pipelineScheduleID,
+    pipelineUUID,
+    selectedSubheaderTabUUID,
+    setSelectedSubheaderTabUUID,
+  ]);
+
+  const saveInCodeAutomaticallyToggled =
+    useMemo(() => typeof pipeline?.settings?.triggers?.save_in_code_automatically === 'undefined'
+      ? project?.pipelines?.settings?.triggers?.save_in_code_automatically
+      : pipeline?.settings?.triggers?.save_in_code_automatically,
+    [
+      pipeline,
+      project,
+    ]);
+
   return (
     <>
       <PipelineDetailPage
-        after={afterMemo}
+        after={!creatingWithLimitation && afterMemo}
+        afterHidden={creatingWithLimitation}
         breadcrumbs={[
           {
             label: () => 'Triggers',
@@ -1558,146 +2019,214 @@ function Edit({
         pageName={PageNameEnum.TRIGGERS}
         pipeline={pipeline}
         setErrors={setErrors}
-        subheader={(
-          <FlexContainer alignItems="center">
-            <Button
-              disabled={saveButtonDisabled}
-              loading={isLoadingUpdate}
-              onClick={onSave}
-              outline
-              primary
-            >
-              Save changes
-            </Button>
+        subheader={(creatingWithLimitation || shouldShowInteractions)
+          ? (
+            <Spacing px={PADDING_UNITS}>
+              <ButtonTabs
+                noPadding
+                onClickTab={({ uuid }) => setSelectedSubheaderTabUUID(uuid)}
+                regularSizeText
+                selectedTabUUID={selectedSubheaderTabUUID}
+                tabs={SUBHEADER_TABS}
+                underlineColor={getColorsForBlockType(
+                  BlockTypeEnum.DATA_LOADER,
+                ).accent}
+                underlineStyle
+              />
+            </Spacing>
+          )
+          : (
+            <FlexContainer alignItems="center">
+              <Button
+                disabled={saveButtonDisabled}
+                loading={isLoadingUpdate}
+                onClick={onSave}
+                outline
+                primary
+              >
+                Save changes
+              </Button>
 
-            <Spacing mr={1} />
+              <Spacing mr={PADDING_UNITS} />
 
-            <Button
-              linkProps={{
-                as: `/pipelines/${pipelineUUID}/triggers/${pipelineScheduleID}`,
-                href: '/pipelines/[pipeline]/triggers/[...slug]',
-              }}
-              noHoverUnderline
-              outline
-              sameColorAsText
-            >
-              Cancel
-            </Button>
-          </FlexContainer>
-        )}
-        title={() => `Edit ${pipelineSchedule?.name}`}
+              <Button
+                linkProps={{
+                  as: `/pipelines/${pipelineUUID}/triggers/${pipelineScheduleID}`,
+                  href: '/pipelines/[pipeline]/triggers/[...slug]',
+                }}
+                noHoverUnderline
+                outline
+                sameColorAsText
+              >
+                Cancel
+              </Button>
+
+              {saveInCodeAutomaticallyToggled && (
+                <>
+                  <Spacing mr={PADDING_UNITS} />
+
+                  <Text default xsmall>
+                    This trigger will automatically be persisted in code.
+                    <br />
+                    To change this behavior, update the <NextLink
+                      as={`/pipelines/${pipelineUUID}/settings`}
+                      href={'/pipelines/[pipeline]/settings'}
+                      passHref
+                    >
+                      <Link openNewWindow xsmall>pipeline’s settings</Link>
+                    </NextLink> or <NextLink
+                      as="/settings/workspace/preferences"
+                      href="/settings/workspace/preferences"
+                      passHref
+                    >
+                      <Link openNewWindow xsmall>project settings</Link>
+                    </NextLink>.
+                  </Text>
+                </>
+              )}
+            </FlexContainer>
+          )
+        }
+        subheaderNoPadding={creatingWithLimitation || shouldShowInteractions}
+        title={() => pipelineSchedule?.name ? `Edit ${pipelineSchedule?.name}` : 'New trigger'}
         uuid="triggers/edit"
       >
-        <Spacing p={PADDING_UNITS}>
-          <Spacing mb={2}>
-            <Headline>
-              Trigger type
-            </Headline>
+        <div ref={containerRef}>
+          {(creatingWithLimitation || shouldShowInteractions) && <Divider light />}
 
-            <Text muted>
-              How would you like this pipeline to be triggered?
-            </Text>
-          </Spacing>
+          {(creatingWithLimitation || shouldShowInteractions)
+            && (
+              SUBHEADER_TAB_CUSTOMIZE.uuid === selectedSubheaderTabUUID
+                || SUBHEADER_TAB_REVIEW.uuid === selectedSubheaderTabUUID
+            )
+            && triggerInteractionsMemo
+          }
 
-          <FlexContainer>
-            {getTriggerTypes(isStreamingPipeline).map(({
-              label,
-              description,
-              uuid,
-            }) => {
-              const selected = scheduleType === uuid;
-              const othersSelected = scheduleType && !selected;
+          {(!creatingWithLimitation || SUBHEADER_TAB_SETTINGS.uuid === selectedSubheaderTabUUID)
+            && (!shouldShowInteractions || SUBHEADER_TAB_SETTINGS.uuid === selectedSubheaderTabUUID)
+            && (
+            <>
+              <Spacing p={PADDING_UNITS}>
+                <Spacing mb={2}>
+                  <Headline>
+                    Trigger type
+                  </Headline>
 
-              return (
-                <Button
-                  key={uuid}
-                  noBackground
-                  noBorder
-                  noPadding
-                  onClick={() => {
-                    if (ScheduleTypeEnum.EVENT === uuid && !eventMatchers?.length) {
-                      // @ts-ignore
-                      setEventMatchers([{}]);
+                  <Text muted>
+                    How would you like this pipeline to be triggered?
+                  </Text>
+                </Spacing>
+
+                <FlexContainer>
+                  {triggerTypesForPipeline.reduce((acc, {
+                    label,
+                    description,
+                    uuid,
+                  }) => {
+                    const selected = scheduleType === uuid;
+                    const othersSelected = scheduleType && !selected;
+
+                    if (creatingWithLimitation && !permittedScheduleTypesAndScheduleIntervals?.[uuid]) {
+                      return acc;
                     }
 
-                    setSchedule(s => ({
-                      ...s,
-                      schedule_type: uuid,
-                    }));
-                  }}
-                >
-                  <CardStyle selected={selected}>
-                    <FlexContainer alignItems="center">
-                      <Flex>
-                        <input checked={selected} type="radio" />
-                      </Flex>
+                    return acc.concat(
+                      <Button
+                        key={uuid}
+                        noBackground
+                        noBorder
+                        noPadding
+                        onClick={() => {
+                          if (ScheduleTypeEnum.EVENT === uuid && !eventMatchers?.length) {
+                            // @ts-ignore
+                            setEventMatchers([{}]);
+                          }
 
-                      <Spacing mr={PADDING_UNITS} />
-
-                      <Flex
-                        alignItems="flex-start"
-                        flexDirection="column"
+                          setSchedule(s => ({
+                            ...s,
+                            schedule_type: uuid,
+                          }));
+                        }}
                       >
-                        <Headline
-                          bold
-                          default={!selected && !othersSelected}
-                          level={5}
-                          muted={!selected && othersSelected}
-                        >
-                          {label()}
-                        </Headline>
+                        <CardStyle selected={selected}>
+                          <FlexContainer alignItems="center">
+                            <Flex>
+                              <input checked={selected} type="radio" />
+                            </Flex>
 
-                        <Text
-                          default={!selected && !othersSelected}
-                          leftAligned
-                          muted={othersSelected}
-                        >
-                          {description()}
-                        </Text>
-                      </Flex>
-                    </FlexContainer>
-                  </CardStyle>
-                </Button>
-              );
-            })}
-          </FlexContainer>
-        </Spacing>
+                            <Spacing mr={PADDING_UNITS} />
 
-        <Spacing mt={UNITS_BETWEEN_SECTIONS}>
-          {ScheduleTypeEnum.TIME === scheduleType && detailsMemo}
-          {ScheduleTypeEnum.EVENT === scheduleType && eventsMemo}
-          {ScheduleTypeEnum.API === scheduleType && apiMemo}
-        </Spacing>
+                            <Flex
+                              alignItems="flex-start"
+                              flexDirection="column"
+                            >
+                              <Headline
+                                bold
+                                default={!selected && !othersSelected}
+                                level={5}
+                                muted={!selected && othersSelected}
+                              >
+                                {label()}
+                              </Headline>
 
-        <Spacing mt={UNITS_BETWEEN_SECTIONS} px={PADDING_UNITS}>
-          <Spacing mb={2}>
-            <Headline>
-              Tags
-            </Headline>
+                              <Text
+                                default={!selected && !othersSelected}
+                                leftAligned
+                                muted={othersSelected}
+                              >
+                                {description()}
+                              </Text>
+                            </Flex>
+                          </FlexContainer>
+                        </CardStyle>
+                      </Button>,
+                    );
+                  }, [])}
+                </FlexContainer>
+              </Spacing>
 
-            <Text muted>
-              Add or remove tags from this trigger.
-            </Text>
-          </Spacing>
+              <Spacing mt={UNITS_BETWEEN_SECTIONS}>
+                {ScheduleTypeEnum.TIME === scheduleType && detailsMemo}
+                {ScheduleTypeEnum.EVENT === scheduleType && eventsMemo}
+                {ScheduleTypeEnum.API === scheduleType && apiMemo}
+              </Spacing>
 
-          <TagsAutocompleteInputField
-            removeTag={(tag: TagType) => {
-              setSchedule(prev => ({
-                ...prev,
-                tags: tags?.filter(uuid => uuid !== tag.uuid),
-              }));
-            }}
-            selectTag={(tag: TagType) => {
-              setSchedule(prev => ({
-                ...prev,
-                tags: pushUnique(tag.uuid, tags, uuid => uuid === tag.uuid),
-              }));
-            }}
-            selectedTags={tags?.map(tag => ({ uuid: tag }))}
-            tags={unselectedTags}
-            uuid={`TagsAutocompleteInputField-trigger-${pipelineScheduleID}`}
-          />
-        </Spacing>
+              {!creatingWithLimitation && (
+                <Spacing mt={UNITS_BETWEEN_SECTIONS} px={PADDING_UNITS}>
+                  <Spacing mb={2}>
+                    <Headline>
+                      Tags
+                    </Headline>
+
+                    <Text muted>
+                      Add or remove tags from this trigger.
+                    </Text>
+                  </Spacing>
+
+                  <TagsAutocompleteInputField
+                    removeTag={(tag: TagType) => {
+                      setSchedule(prev => ({
+                        ...prev,
+                        tags: tags?.filter(uuid => uuid !== tag.uuid),
+                      }));
+                    }}
+                    selectTag={(tag: TagType) => {
+                      setSchedule(prev => ({
+                        ...prev,
+                        tags: pushUnique(tag.uuid, tags, uuid => uuid === tag.uuid),
+                      }));
+                    }}
+                    selectedTags={tags?.map(tag => ({ uuid: tag }))}
+                    tags={unselectedTags}
+                    uuid={`TagsAutocompleteInputField-trigger-${pipelineScheduleID}`}
+                  />
+                </Spacing>
+              )}
+            </>
+          )}
+
+          {(creatingWithLimitation || shouldShowInteractions) && navigationButtonsMemo}
+        </div>
       </PipelineDetailPage>
     </>
   );

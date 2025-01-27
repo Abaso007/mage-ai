@@ -1,14 +1,17 @@
-from typing import IO, List, Mapping, Union
+from typing import IO, Dict, List, Mapping, Union
 
 import numpy as np
 import pandas as pd
+import simplejson
 from mysql.connector import connect
 from mysql.connector.cursor import MySQLCursor
 from pandas import DataFrame, Series
 
 from mage_ai.io.config import BaseConfigLoader, ConfigKey
-from mage_ai.io.export_utils import BadConversionError, PandasTypes
+from mage_ai.io.constants import UNIQUE_CONFLICT_METHOD_UPDATE
+from mage_ai.io.export_utils import PandasTypes
 from mage_ai.io.sql import BaseSQL
+from mage_ai.shared.parsers import encode_complex
 from mage_ai.shared.utils import clean_name
 
 QUERY_ROW_LIMIT = 10_000_000
@@ -50,15 +53,38 @@ class MySQL(BaseSQL):
         dtypes: Mapping[str, str],
         schema_name: str,
         table_name: str,
+        auto_clean_name: bool = True,
+        case_sensitive: bool = False,
         unique_constraints: List[str] = None,
+        overwrite_types: Dict = None,
+        **kwargs,
     ) -> str:
         if unique_constraints is None:
             unique_constraints = []
-        query = []
+        columns_and_types = []
         for cname in dtypes:
-            query.append(f'`{clean_name(cname)}` {dtypes[cname]} NULL')
+            if overwrite_types is not None and cname in overwrite_types.keys():
+                dtypes[cname] = overwrite_types[cname]
+            if auto_clean_name:
+                cleaned_col_name = clean_name(cname, case_sensitive=case_sensitive)
+            else:
+                cleaned_col_name = cname
+            columns_and_types.append(f'`{cleaned_col_name}` {dtypes[cname]} NULL')
 
-        return f'CREATE TABLE {table_name} (' + ','.join(query) + ');'
+        if unique_constraints:
+            unique_constraints = [
+                clean_name(col, case_sensitive=case_sensitive)
+                for col in unique_constraints
+            ]
+            index_name = '_'.join([
+                clean_name(table_name, case_sensitive=case_sensitive),
+            ] + unique_constraints)
+            index_name = f'unique{index_name}'[:64]
+            columns_and_types.append(
+                f"CONSTRAINT {index_name} Unique({', '.join(unique_constraints)})"
+            )
+
+        return f'CREATE TABLE {table_name} (' + ','.join(columns_and_types) + ');'
 
     def open(self) -> None:
         with self.printer.print_msg('Opening connection to MySQL database'):
@@ -82,14 +108,66 @@ class MySQL(BaseSQL):
         dtypes: List[str],
         full_table_name: str,
         buffer: Union[IO, None] = None,
+        case_sensitive: bool = False,
+        unique_constraints: List[str] = None,
+        unique_conflict_method: str = None,
         **kwargs,
     ) -> None:
+        def serialize_obj(val):
+            if type(val) is dict or type(val) is np.ndarray:
+                return simplejson.dumps(
+                    val,
+                    default=encode_complex,
+                    ignore_nan=True,
+                )
+            elif type(val) is list and len(val) >= 1 and type(val[0]) is dict:
+                return simplejson.dumps(
+                    val,
+                    default=encode_complex,
+                    ignore_nan=True,
+                )
+            return val
         values_placeholder = ', '.join(["%s" for i in range(len(df.columns))])
         values = []
-        for _, row in df.iterrows():
+        df_ = df.copy()
+        columns = df_.columns
+        for col in columns:
+            dtype = df_[col].dtype
+            if dtype == PandasTypes.OBJECT:
+                df_[col] = df_[col].apply(lambda x: serialize_obj(x))
+            elif dtype in (
+                PandasTypes.MIXED,
+                PandasTypes.UNKNOWN_ARRAY,
+                PandasTypes.COMPLEX,
+            ):
+                df_[col] = df_[col].astype('string')
+
+            # Remove extraneous surrounding double quotes
+            # that get added while performing conversion to string.
+            df_[col] = df_[col].apply(lambda x: x.strip('"') if x and isinstance(x, str) else x)
+        df_.replace({np.NaN: None}, inplace=True)
+
+        for _, row in df_.iterrows():
             values.append(tuple([str(val) if type(val) is pd.Timestamp else val for val in row]))
 
-        sql = f'INSERT INTO {full_table_name} VALUES ({values_placeholder})'
+        cleaned_columns = [clean_name(col, case_sensitive=case_sensitive) for col in columns]
+        insert_columns = ', '.join([f'`{col}`'for col in cleaned_columns])
+
+        query = [
+            f'INSERT INTO {full_table_name} ({insert_columns})',
+            f'VALUES ({values_placeholder})',
+        ]
+
+        if unique_constraints and unique_conflict_method:
+            if UNIQUE_CONFLICT_METHOD_UPDATE == unique_conflict_method:
+                update_command = [f'{col} = new.{col}' for col in cleaned_columns]
+                query += [
+                    'AS new',
+                    f"ON DUPLICATE KEY UPDATE {', '.join(update_command)}",
+                ]
+
+        sql = '\n'.join(query)
+
         cursor.executemany(sql, values)
 
     def get_type(self, column: Series, dtype: str) -> str:
@@ -98,10 +176,7 @@ class MySQL(BaseSQL):
             PandasTypes.UNKNOWN_ARRAY,
             PandasTypes.COMPLEX,
         ):
-            raise BadConversionError(
-                f'Cannot convert column \'{column.name}\' with data type \'{dtype}\' to '
-                'a MySQL datatype.'
-            )
+            return 'TEXT'
         elif dtype in (PandasTypes.DATETIME, PandasTypes.DATETIME64):
             try:
                 if column.dt.tz:

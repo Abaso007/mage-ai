@@ -52,13 +52,24 @@ class BaseSQL(BaseSQLConnection):
         dtypes: Mapping[str, str],
         schema_name: str,
         table_name: str,
-        unique_constraints: List[str] = [],
+        auto_clean_name: bool = True,
+        case_sensitive: bool = False,
+        unique_constraints: List[str] = None,
+        overwrite_types: Dict = None,
+        skip_semicolon_at_end: bool = False,
+        **kwargs,
     ) -> str:
+        if unique_constraints is None:
+            unique_constraints = []
         return gen_table_creation_query(
             dtypes,
             schema_name,
             table_name,
+            auto_clean_name=auto_clean_name,
+            case_sensitive=case_sensitive,
             unique_constraints=unique_constraints,
+            overwrite_types=overwrite_types,
+            skip_semicolon_at_end=skip_semicolon_at_end,
         )
 
     def build_create_table_as_command(
@@ -103,7 +114,8 @@ class BaseSQL(BaseSQLConnection):
         db_dtypes: List[str],
         dtypes: List[str],
         full_table_name: str,
-        buffer: Union[IO, None] = None
+        buffer: Union[IO, None] = None,
+        **kwargs,
     ) -> None:
         raise Exception('Subclasses must override this method.')
 
@@ -119,6 +131,12 @@ class BaseSQL(BaseSQLConnection):
             query_string = self._clean_query(query_string)
             with self.conn.cursor() as cur:
                 cur.execute(query_string, **query_vars)
+
+    def execute_query_raw(self, query: str, **kwargs) -> None:
+        with self.conn.cursor() as cursor:
+            result = cursor.execute(query)
+        self.conn.commit()
+        return result
 
     def execute_queries(
         self,
@@ -202,17 +220,24 @@ class BaseSQL(BaseSQLConnection):
     def export(
         self,
         df: DataFrame,
-        schema_name: str,
-        table_name: str,
+        # Optional configs but commonly used
+        schema_name: str = None,
+        table_name: str = None,
         if_exists: ExportWritePolicy = ExportWritePolicy.REPLACE,
         index: bool = False,
         verbose: bool = True,
-        query_string: Union[str, None] = None,
-        drop_table_on_replace: bool = False,
-        cascade_on_drop: bool = False,
+        # Other optional configs
         allow_reserved_words: bool = False,
+        auto_clean_name: bool = True,
+        case_sensitive: bool = False,
+        cascade_on_drop: bool = False,
+        drop_table_on_replace: bool = False,
+        overwrite_types: Dict = None,
+        query_string: Union[str, None] = None,
         unique_conflict_method: str = None,
         unique_constraints: List[str] = None,
+        skip_semicolon_at_end: bool = False,
+        **kwargs,
     ) -> None:
         """
         Exports dataframe to the connected database from a Pandas data frame. If table doesn't
@@ -232,6 +257,11 @@ class BaseSQL(BaseSQLConnection):
                             Defaults to False.
             **kwargs: Additional query parameters.
         """
+        if table_name is None:
+            raise Exception('Please provide a table_name argument in the export method.')
+
+        if schema_name is None:
+            schema_name = self.default_schema()
 
         if type(df) is dict:
             df = DataFrame([df])
@@ -247,18 +277,34 @@ class BaseSQL(BaseSQLConnection):
             if index:
                 df = df.reset_index()
 
+            # Clean dataframe
             dtypes = infer_dtypes(df)
             df = clean_df_for_export(df, self.clean, dtypes)
 
             # Clean column names
-            col_mapping = {col: self._clean_column_name(
-                                        col,
-                                        allow_reserved_words=allow_reserved_words)
-                           for col in df.columns}
-            df = df.rename(columns=col_mapping)
+            if auto_clean_name:
+                col_mapping = {col: self._clean_column_name(
+                                            col,
+                                            allow_reserved_words=allow_reserved_words,
+                                            case_sensitive=case_sensitive)
+                               for col in df.columns}
+                df = df.rename(columns=col_mapping)
             dtypes = infer_dtypes(df)
 
         def __process():
+            if not query_string and kwargs.get('fast_execute', True) and \
+                    hasattr(self, 'upload_dataframe_fast') and callable(self.upload_dataframe_fast):
+                self.upload_dataframe_fast(
+                    df,
+                    schema_name,
+                    table_name,
+                    if_exists=if_exists,
+                    unique_conflict_method=unique_conflict_method,
+                    unique_constraints=unique_constraints,
+                    **kwargs,
+                )
+                return
+
             buffer = StringIO()
             table_exists = self.table_exists(schema_name, table_name)
 
@@ -299,24 +345,31 @@ class BaseSQL(BaseSQLConnection):
                 else:
                     db_dtypes = {col: self.get_type(df[col], dtypes[col]) for col in dtypes}
                     if should_create_table:
+
                         query = self.build_create_table_command(
                             db_dtypes,
                             schema_name,
                             table_name,
+                            auto_clean_name=auto_clean_name,
+                            case_sensitive=case_sensitive,
                             unique_constraints=unique_constraints,
+                            overwrite_types=overwrite_types,
+                            skip_semicolon_at_end=skip_semicolon_at_end,
                         )
                         cur.execute(query)
-
                     self.upload_dataframe(
                         cur,
                         df,
                         db_dtypes,
                         dtypes,
                         full_table_name,
-                        buffer,
                         allow_reserved_words=allow_reserved_words,
+                        buffer=buffer,
+                        case_sensitive=case_sensitive,
+                        auto_clean_name=auto_clean_name,
                         unique_conflict_method=unique_conflict_method,
                         unique_constraints=unique_constraints,
+                        **kwargs,
                     )
             self.conn.commit()
 

@@ -1,7 +1,8 @@
 import singer
 from singer import metadata
-from tap_sftp import client
-from tap_sftp.singer_encodings import json_schema
+
+from mage_integrations.sources.sftp.tap_sftp import client
+from mage_integrations.sources.sftp.tap_sftp.singer_encodings import json_schema
 
 LOGGER = singer.get_logger()
 
@@ -11,7 +12,7 @@ def discover_streams(config):
 
     conn = client.connection(config)
 
-    tables = config['tables']
+    tables = config.get('tables', [])
     for table_spec in tables:
         LOGGER.info('Sampling records to determine table JSON schema "%s".',
                     table_spec['table_name'])

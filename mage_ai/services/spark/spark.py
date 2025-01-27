@@ -1,6 +1,14 @@
-from mage_ai.services.spark.config import SparkConfig
-from typing import List
 import os
+from typing import List
+
+from mage_ai.services.spark.config import SparkConfig
+
+try:
+    from pyspark.conf import SparkConf
+    from pyspark.sql import SparkSession
+    SPARK_ENABLED = True
+except Exception:
+    SPARK_ENABLED = False
 
 
 def get_file_names(jars: List) -> List:
@@ -110,15 +118,15 @@ def get_spark_session(spark_config: SparkConfig):
     Returns:
         SparkSession: The Spark session.
     """
-    from pyspark.conf import SparkConf
-    from pyspark.sql import SparkSession
+    if not SPARK_ENABLED:
+        raise ImportError('Spark is not supported in current environment.')
 
     if spark_config:
         active_session = SparkSession.getActiveSession()
         print('Check the given spark_config against the active Spark session.')
-        if has_same_spark_config(
+        if spark_config.use_custom_session or has_same_spark_config(
             spark_session=active_session,
-            spark_config=spark_config
+            spark_config=spark_config,
         ):
             print('Reuse the active Spark session.')
             return active_session

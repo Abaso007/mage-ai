@@ -1,24 +1,29 @@
-from mage_integrations.connections.mssql import (
-    MSSQL as MSSQLConnection
-)
-from mage_integrations.sources.base import main
-from mage_integrations.sources.constants import (
-    COLUMN_FORMAT_DATETIME,
-)
-from mage_integrations.sources.sql.base import Source
 from typing import List
+
 import dateutil
+
+from mage_integrations.connections.mssql import MSSQL as MSSQLConnection
+from mage_integrations.sources.base import main
+from mage_integrations.sources.constants import COLUMN_FORMAT_DATETIME
+from mage_integrations.sources.sql.base import Source
 
 
 class MSSQL(Source):
     @property
     def table_prefix(self):
         schema = self.config['schema']
-        return f'{schema}.'
+        return f'"{schema}".'
+
+    def build_table_name(self, stream) -> str:
+        table_name = stream.tap_stream_id
+
+        return f'{self.table_prefix}"{table_name}"'
 
     def build_connection(self) -> MSSQLConnection:
         return MSSQLConnection(
+            authentication=self.config.get('authentication'),
             database=self.config['database'],
+            driver=self.config.get('driver'),
             host=self.config['host'],
             password=self.config['password'],
             port=self.config.get('port', 1433),

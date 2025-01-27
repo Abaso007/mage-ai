@@ -1,11 +1,16 @@
+import asyncio
+import json
+import traceback
+
+import dateutil.parser
+import simplejson
+import tornado.web
+
 from mage_ai.api.middleware import OAuthMiddleware
 from mage_ai.shared.parsers import encode_complex
 from mage_ai.shared.strings import camel_to_snake_case
-import dateutil.parser
-import json
-import simplejson
-import tornado.web
-import traceback
+from mage_ai.usage_statistics.constants import EventNameType
+from mage_ai.usage_statistics.logger import UsageStatisticLogger
 
 META_KEY_LIMIT = '_limit'
 META_KEY_OFFSET = '_offset'
@@ -57,13 +62,36 @@ class BaseHandler(tornado.web.RequestHandler):
         if status_code == 500:
             self.set_status(200)
             exception = kwargs['exc_info'][1]
+            errors = traceback.format_stack()
+            message = traceback.format_exc()
+
+            child_pk = self.path_kwargs.get('child_pk')
+            child = self.path_kwargs.get('child')
+            pk = self.path_kwargs.get('pk')
+            resource = self.path_kwargs.get('resource')
+
+            asyncio.run(
+                UsageStatisticLogger().error(
+                    event_name=EventNameType.APPLICATION_ERROR,
+                    code=status_code,
+                    errors='\n'.join(errors or []),
+                    message=str(exception),
+                    operation=self.request.method,
+                    resource=child or resource,
+                    resource_id=child_pk if child else pk,
+                    resource_parent=resource if child else None,
+                    resource_parent_id=pk if child else None,
+                    type=None,
+                )
+            )
+
             self.write(
                 dict(
                     error=dict(
                         code=status_code,
-                        errors=traceback.format_stack(),
+                        errors=errors,
                         exception=str(exception),
-                        message=traceback.format_exc(),
+                        message=message,
                     ),
                     url_parameters=self.path_kwargs,
                 )
@@ -95,7 +123,16 @@ class BaseHandler(tornado.web.RequestHandler):
 
 
 class BaseApiHandler(BaseHandler, OAuthMiddleware):
-    pass
+    def initialize(self, **kwargs) -> None:
+        super().initialize(**kwargs)
+        self.is_health_check = kwargs.get('is_health_check', False)
+
+    def prepare(self):
+        from mage_ai.server.server import latest_user_activity
+
+        if not self.is_health_check:
+            latest_user_activity.update_latest_activity()
+        super().prepare()
 
 
 class BaseDetailHandler(BaseHandler):

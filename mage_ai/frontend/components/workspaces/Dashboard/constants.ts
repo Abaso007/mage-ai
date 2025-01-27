@@ -1,13 +1,22 @@
-import UserType, { RoleValueEnum } from '@interfaces/UserType';
-import { ProjectTypeEnum } from '@interfaces/ProjectType';
-import { Settings, WorkspacesIcon, WorkspacesUsersIcon } from '@oracle/icons';
+import UserType from '@interfaces/UserType';
+import {
+  File,
+  NavDashboard,
+  Schedule,
+  Settings,
+  WorkspacesIcon,
+  WorkspacesUsersIcon,
+} from '@oracle/icons';
 
 export const SECTION_UUID_WORKSPACE = 'Workspace';
 
 export enum WorkspacesPageNameEnum {
+  OVERVIEW = 'overview',
+  PIPELINE_RUNS = 'pipeline_runs',
   WORKSPACES = 'workspaces',
   USERS = 'users',
   SETTINGS = 'settings',
+  FILE_BROWSER = 'file_browser',
 }
 
 export function buildNavigationItems(
@@ -25,6 +34,24 @@ export function buildNavigationItems(
         href: '/manage',
       },
     },
+    {
+      Icon: NavDashboard,
+      id: WorkspacesPageNameEnum.OVERVIEW,
+      isSelected: () => WorkspacesPageNameEnum.OVERVIEW === pageName,
+      label: () => 'Overview',
+      linkProps: {
+        href: '/manage/overview',
+      },
+    },
+    {
+      Icon: Schedule,
+      id: WorkspacesPageNameEnum.PIPELINE_RUNS,
+      isSelected: () => WorkspacesPageNameEnum.PIPELINE_RUNS === pageName,
+      label: () => 'Pipeline runs',
+      linkProps: {
+        href: '/manage/pipeline-runs',
+      },
+    },
   ];
 
   if (owner) {
@@ -39,8 +66,17 @@ export function buildNavigationItems(
     });
   }
 
-  if (projectType == ProjectTypeEnum.MAIN) {
-    workspaceItems.push({
+  workspaceItems.push(...[
+    {
+      Icon: File,
+      id: WorkspacesPageNameEnum.FILE_BROWSER,
+      isSelected: () => WorkspacesPageNameEnum.FILE_BROWSER === pageName,
+      label: () => 'File browser',
+      linkProps: {
+        href: '/manage/files',
+      },
+    },
+    {
       Icon: Settings,
       id: WorkspacesPageNameEnum.SETTINGS,
       isSelected: () => WorkspacesPageNameEnum.SETTINGS === pageName,
@@ -48,8 +84,8 @@ export function buildNavigationItems(
       linkProps: {
         href: '/manage/settings',
       },
-    });
-  }
+    },
+  ]);
 
   return workspaceItems;
 }

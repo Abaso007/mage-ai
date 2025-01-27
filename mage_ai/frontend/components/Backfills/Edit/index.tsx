@@ -8,6 +8,7 @@ import { useMutation } from 'react-query';
 import { useRouter } from 'next/router';
 
 import BackfillType, {
+  BackfillSettingsType,
   BACKFILL_TYPE_CODE,
   BACKFILL_TYPE_DATETIME,
   IntervalTypeEnum,
@@ -21,6 +22,7 @@ import ErrorsType from '@interfaces/ErrorsType';
 import Flex from '@oracle/components/Flex';
 import FlexContainer from '@oracle/components/FlexContainer';
 import Headline from '@oracle/elements/Headline';
+import OverwriteVariables from '@components/Triggers/OverwriteVariables';
 import PipelineDetailPage from '@components/PipelineDetailPage';
 import PipelineType from '@interfaces/PipelineType';
 import PipelineVariableType from '@interfaces/PipelineVariableType';
@@ -34,6 +36,7 @@ import {
   Alphabet,
   CalendarDate,
   Schedule,
+  Variables as VariablesIcon,
 } from '@oracle/icons';
 import { BACKFILL_TYPES } from './constants';
 import { CardStyle } from '../../Triggers/Edit/index.style';
@@ -43,10 +46,16 @@ import {
   UNIT,
 } from '@oracle/styles/units/spacing';
 import { capitalize } from '@utils/string';
-import { getTimeInUTC } from '../../Triggers/utils';
+import { getDateAndTimeObjFromDatetimeString } from '@oracle/components/Calendar/utils';
+import { getDatetimeFromDateAndTime } from '@components//Triggers/utils';
+import {
+  getFormattedGlobalVariables,
+  getFormattedVariable,
+  parseVariables,
+} from '@components/Sidekick/utils';
+import { isEmptyObject, mapObject, selectKeys } from '@utils/hash';
 import { onSuccess } from '@api/utils/response';
-import { parseVariables } from '@components/Sidekick/utils';
-import { selectKeys } from '@utils/hash';
+import { shouldDisplayLocalTimezone } from '@components/settings/workspace/utils';
 
 type BackfillEditProps = {
   backfill: BackfillType;
@@ -66,21 +75,33 @@ function BackfillEdit({
   variables,
 }: BackfillEditProps) {
   const router = useRouter();
+  const displayLocalTimezone = shouldDisplayLocalTimezone();
   const [model, setModel] = useState<BackfillType>();
+  const [settings, setSettings] = useState<BackfillSettingsType>();
   const {
     block_uuid: blockUUID,
     id: modelID,
     interval_type: intervalType,
     interval_units: intervalUnits,
-    end_datetime: endDatetime,
-    start_datetime: startDatetime,
     name,
   } = model || {};
   const {
     uuid: pipelineUUID,
   } = pipeline;
+  const runtimeVariablesInit = useMemo(() => (
+    isEmptyObject(modelProp?.variables || {})
+      ? (getFormattedGlobalVariables(variables) || {})
+      : mapObject(modelProp.variables, val => getFormattedVariable(val))
+  ),
+  [
+    modelProp?.variables,
+    variables,
+  ]);
 
-  const [runtimeVariables, setRuntimeVariables] = useState<{ [ variable: string ]: string }>({});
+  const [enableVariablesOverwrite, setEnableVariablesOverwrite] = useState<boolean>(true);
+  const [runtimeVariables, setRuntimeVariables] = useState<{
+    [ variable: string ]: string
+  }>(runtimeVariablesInit);
   const [setupType, setSetupType] = useState<string>(
     blockUUID ? BACKFILL_TYPE_CODE : BACKFILL_TYPE_DATETIME,
   );
@@ -99,27 +120,34 @@ function BackfillEdit({
 
       const startDatetime = modelProp.start_datetime;
       if (startDatetime) {
-        const dateTimeSplit = startDatetime.split(' ');
-        const timePart = dateTimeSplit[1];
-        setDateStart(getTimeInUTC(startDatetime));
-        setTimeStart({
-          hour: timePart.substring(0, 2),
-          minute: timePart.substring(3, 5),
-        });
+        const startDatetimeObj = getDateAndTimeObjFromDatetimeString(
+          startDatetime,
+          { localTimezone: displayLocalTimezone },
+        );
+        setDateStart(startDatetimeObj?.date);
+        setTimeStart(startDatetimeObj.time);
       }
 
       const endDatetime = modelProp.end_datetime;
       if (endDatetime) {
-        const dateTimeSplit = endDatetime.split(' ');
-        const timePart = dateTimeSplit[1];
-        setDateEnd(getTimeInUTC(endDatetime));
-        setTimeEnd({
-          hour: timePart.substring(0, 2),
-          minute: timePart.substring(3, 5),
-        });
+        const endDatetimeObj = getDateAndTimeObjFromDatetimeString(
+          endDatetime,
+          { localTimezone: displayLocalTimezone },
+        );
+        setDateEnd(endDatetimeObj?.date);
+        setTimeEnd(endDatetimeObj?.time);
       }
     }
-  }, [modelProp]);
+  }, [displayLocalTimezone, modelProp]);
+
+  useEffect(() => {
+    if (!settings && model?.settings) {
+      setSettings(model.settings);
+    }
+  }, [
+    settings,
+    model?.settings,
+  ]);
 
   const detailsMemo = useMemo(() => {
     const rows = [
@@ -128,7 +156,7 @@ function BackfillEdit({
           alignItems="center"
           key="model_name_detail"
         >
-          <Alphabet default size={1.5 * UNIT} />
+          <Alphabet default />
           <Spacing mr={1} />
           <Text default>
             Backfill name
@@ -157,7 +185,7 @@ function BackfillEdit({
             alignItems="center"
             key="start_time"
           >
-            <CalendarDate default size={1.5 * UNIT} />
+            <CalendarDate default />
             <Spacing mr={1} />
             <Text default>
               Start date and time
@@ -174,7 +202,10 @@ function BackfillEdit({
                 onFocus={() => setShowCalendarStart(true)}
                 placeholder="YYYY-MM-DD HH:MM"
                 value={dateStart
-                  ? `${dateStart.toISOString().split('T')[0]} ${timeStart?.hour}:${timeStart?.minute}`
+                  ? getDatetimeFromDateAndTime(
+                    dateStart,
+                    timeStart,
+                    { localTimezone: displayLocalTimezone })
                   : ''
                 }
               />
@@ -187,6 +218,7 @@ function BackfillEdit({
                 style={{ position: 'relative' }}
               >
                 <Calendar
+                  localTime={displayLocalTimezone}
                   selectedDate={dateStart}
                   selectedTime={timeStart}
                   setSelectedDate={setDateStart}
@@ -202,7 +234,7 @@ function BackfillEdit({
             alignItems="center"
             key="end_time"
           >
-            <CalendarDate default size={1.5 * UNIT} />
+            <CalendarDate default />
             <Spacing mr={1} />
             <Text default>
               End date and time
@@ -219,7 +251,10 @@ function BackfillEdit({
                 onFocus={() => setShowCalendarEnd(true)}
                 placeholder="YYYY-MM-DD HH:MM"
                 value={dateEnd
-                  ? `${dateEnd.toISOString().split('T')[0]} ${timeEnd?.hour}:${timeEnd?.minute}`
+                  ? getDatetimeFromDateAndTime(
+                    dateEnd,
+                    timeEnd,
+                    { localTimezone: displayLocalTimezone })
                   : ''
                 }
               />
@@ -232,6 +267,7 @@ function BackfillEdit({
                 style={{ position: 'relative' }}
               >
                 <Calendar
+                  localTime={displayLocalTimezone}
                   selectedDate={dateEnd}
                   selectedTime={timeEnd}
                   setSelectedDate={setDateEnd}
@@ -247,7 +283,7 @@ function BackfillEdit({
             alignItems="center"
             key="interval_type"
           >
-            <Schedule default size={1.5 * UNIT} />
+            <Schedule default />
             <Spacing mr={1} />
             <Text default>
               Interval type
@@ -278,7 +314,7 @@ function BackfillEdit({
             alignItems="center"
             key="interval_units"
           >
-            <Schedule default size={1.5 * UNIT} />
+            <Schedule default />
             <Spacing mr={1} />
             <Text default>
               Interval units
@@ -287,12 +323,14 @@ function BackfillEdit({
           <TextInput
             disabled={!intervalType}
             key="interval_unit_input"
+            minValue={1}
             monospace
             onChange={(e) => {
               e.preventDefault();
+              const updatedUnitValue = +e.target.value;
               setModel(s => ({
                 ...s,
-                interval_units: e.target.value,
+                interval_units: updatedUnitValue < 1 ? 1 : updatedUnitValue,
               }));
             }}
             placeholder={intervalType
@@ -305,6 +343,57 @@ function BackfillEdit({
         ],
       ]);
     }
+
+    if (!isEmptyObject(runtimeVariablesInit)) {
+      rows.push([
+        <FlexContainer
+          alignItems="center"
+          key="overwrite_runtime_variables"
+        >
+          <VariablesIcon default />
+          <Spacing mr={1} />
+          <Text default>
+            Runtime variables
+          </Text>
+        </FlexContainer>,
+        <OverwriteVariables
+          borderless
+          compact
+          enableVariablesOverwrite={enableVariablesOverwrite}
+          key="overwrite_runtime_variables_table"
+          runtimeVariables={runtimeVariables}
+          setEnableVariablesOverwrite={setEnableVariablesOverwrite}
+          setRuntimeVariables={setRuntimeVariables}
+        />,
+      ]);
+    }
+
+    rows.push([
+      <FlexContainer
+        alignItems="center"
+        key="concurrency"
+      >
+        <Text default>
+          Max concurrent runs
+        </Text>
+      </FlexContainer>,
+      <TextInput
+        key="concurrency_input"
+        minValue={1}
+        monospace
+        onChange={(e) => {
+          e.preventDefault();
+          const updatedPipelineRunLimit = e.target.value;
+          const invalidPipelineRunLimit = updatedPipelineRunLimit < 0 || updatedPipelineRunLimit === '';
+          setSettings(s => ({
+            ...s,
+            pipeline_run_limit: invalidPipelineRunLimit ? null : updatedPipelineRunLimit,
+          }));
+        }}
+        type="number"
+        value={settings?.pipeline_run_limit}
+      />,
+    ]);
 
     return (
       <>
@@ -325,9 +414,14 @@ function BackfillEdit({
   }, [
     dateEnd,
     dateStart,
+    displayLocalTimezone,
+    enableVariablesOverwrite,
     intervalType,
     intervalUnits,
     name,
+    runtimeVariables,
+    runtimeVariablesInit,
+    settings?.pipeline_run_limit,
     setupType,
     showCalendarStart,
     showCalendarEnd,
@@ -364,8 +458,9 @@ function BackfillEdit({
       end_datetime: null,
       interval_type: null,
       interval_units: null,
+      settings,
       start_datetime: null,
-      variables: parseVariables(runtimeVariables),
+      variables: enableVariablesOverwrite ? parseVariables(runtimeVariables) : {},
     };
 
     if (BACKFILL_TYPE_CODE === setupType) {
@@ -373,11 +468,25 @@ function BackfillEdit({
     } else {
       data.interval_type = intervalType;
       data.interval_units = intervalUnits;
-      data.end_datetime = dateEnd && timeEnd?.hour && timeEnd?.minute
-        ? `${dateEnd.toISOString().split('T')[0]} ${timeEnd?.hour}:${timeEnd?.minute}:00`
+      data.end_datetime = (dateEnd && timeEnd?.hour && timeEnd?.minute)
+        ? getDatetimeFromDateAndTime(
+          dateEnd,
+          timeEnd,
+          {
+            convertToUtc: displayLocalTimezone,
+            includeSeconds: true,
+            localTimezone: displayLocalTimezone,
+          })
         : null;
-      data.start_datetime = dateStart && timeStart?.hour && timeStart?.minute
-        ? `${dateStart.toISOString().split('T')[0]} ${timeStart?.hour}:${timeStart?.minute}:00`
+      data.start_datetime = (dateStart && timeStart?.hour && timeStart?.minute)
+        ? getDatetimeFromDateAndTime(
+          dateStart,
+          timeStart,
+          {
+            convertToUtc: displayLocalTimezone,
+            includeSeconds: true,
+            localTimezone: displayLocalTimezone,
+          })
         : null;
     }
 
@@ -386,13 +495,17 @@ function BackfillEdit({
   }, [
     dateEnd,
     dateStart,
+    displayLocalTimezone,
+    enableVariablesOverwrite,
     intervalType,
     intervalUnits,
     model,
     runtimeVariables,
+    settings,
     setupType,
     timeEnd,
     timeStart,
+    updateModel,
   ]);
 
   const saveButtonDisabled = useMemo(() => {
@@ -409,8 +522,6 @@ function BackfillEdit({
     intervalType,
     intervalUnits,
     setupType,
-    timeEnd,
-    timeStart,
   ]);
 
   return (

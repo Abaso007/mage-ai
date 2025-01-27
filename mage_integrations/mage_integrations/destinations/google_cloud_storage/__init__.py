@@ -33,7 +33,7 @@ class GoogleCloudStorage(Destination):
             )
         return Client()
 
-    def export_batch_data(self, record_data: List[Dict], stream: str) -> None:
+    def export_batch_data(self, record_data: List[Dict], stream: str, tags: Dict = None) -> None:
         client = self.build_client()
 
         table_name = self.config.get('table')
@@ -54,7 +54,11 @@ class GoogleCloudStorage(Destination):
 
         buffer = BytesIO()
         if self.file_type == 'parquet':
-            df.to_parquet(buffer)
+            df.to_parquet(
+                buffer,
+                coerce_timestamps='ms',
+                allow_truncated_timestamps=True,
+            )
         elif self.file_type == 'csv':
             df.to_csv(buffer, index=False)
         else:

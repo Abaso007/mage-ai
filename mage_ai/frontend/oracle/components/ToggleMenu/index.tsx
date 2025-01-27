@@ -16,7 +16,9 @@ import {
   ToggleValueStyle,
 } from './index.style';
 import { ChevronRight } from '@oracle/icons';
-import { goToWithFilters } from '@utils/routing';
+import { GoToWithFiltersProps, goToWithFilters } from '@utils/routing';
+import { MetaQueryEnum } from '@api/constants';
+import { ROW_LIMIT } from '@components/shared/Paginate';
 import { capitalize, removeUnderscore } from '@utils/string';
 
 type ToggleMenuProps = {
@@ -37,6 +39,8 @@ type ToggleMenuProps = {
   };
   parentRef: React.RefObject<any>;
   query: { [keyof: string]: string[] };
+  resetLimitOnApply?: boolean;
+  resetPageOnApply?: boolean;
   setOpen: (open: boolean) => void;
   toggleValueMapping?: {
     [keyof: string]: {
@@ -55,6 +59,8 @@ function ToggleMenu({
   options = {},
   parentRef,
   query,
+  resetLimitOnApply,
+  resetPageOnApply,
   setOpen,
   toggleValueMapping,
 }: ToggleMenuProps) {
@@ -69,6 +75,7 @@ function ToggleMenu({
     top = 0,
   } = parentRef?.current?.getBoundingClientRect?.() || {};
   const optionKeys = Object.keys(options);
+
 
   return (
     <ClickOutside
@@ -93,7 +100,7 @@ function ToggleMenu({
                   onMouseEnter={() => setHighlightedOptionKey(optionKey)}
                 >
                   <Text>
-                    {capitalize(optionKey)}
+                    {removeUnderscore(capitalize(optionKey))}
                   </Text>
                   <ChevronRight />
                 </OptionStyle>
@@ -103,28 +110,35 @@ function ToggleMenu({
           <Flex flex="2">
             <ContentStyle>
               {highlightedOptionKey && (
-                Object.entries((optionsState || options)?.[highlightedOptionKey] || {}).map(([value, enabled]) => (
-                  <ToggleValueStyle key={value}>
-                    <Text>
-                      {(typeof toggleValueMapping?.[highlightedOptionKey]?.[value] === 'function'
-                        // @ts-ignore
-                        ? capitalize(toggleValueMapping?.[highlightedOptionKey]?.[value]?.())
-                        : toggleValueMapping?.[highlightedOptionKey]?.[value]
-                       ) || removeUnderscore(capitalize(value))
-                      }
-                    </Text>
-                    <ToggleSwitch
-                      checked={enabled}
-                      onCheck={() => setOptionsState(prevState => ({
-                        ...prevState,
-                        [highlightedOptionKey]: {
-                          ...prevState?.[highlightedOptionKey],
-                          [value]: !enabled,
-                        },
-                      }))}
-                    />
-                  </ToggleValueStyle>
-                ))
+                Object.entries((optionsState || options)?.[highlightedOptionKey] || {}).map(([value, enabled]) => {
+                  const valueMapping = toggleValueMapping?.[highlightedOptionKey];
+                  const optionValue = (typeof valueMapping?.[value] === 'function'
+                    // @ts-ignore
+                    ? capitalize(valueMapping?.[value]?.())
+                    : valueMapping?.[value]
+                  ) || value;
+
+                  return (
+                    <ToggleValueStyle key={value}>
+                      <Text
+                        title={!valueMapping ? optionValue : null}
+                        width={200}
+                      >
+                        {optionValue}
+                      </Text>
+                      <ToggleSwitch
+                        checked={enabled}
+                        onCheck={() => setOptionsState(prevState => ({
+                          ...prevState,
+                          [highlightedOptionKey]: {
+                            ...prevState?.[highlightedOptionKey],
+                            [value]: !enabled,
+                          },
+                        }))}
+                      />
+                    </ToggleValueStyle>
+                  );
+                })
               )}
             </ContentStyle>
           </Flex>
@@ -148,13 +162,21 @@ function ToggleMenu({
                   updatedQuery,
                 );
 
+                const filterQueryOptions: GoToWithFiltersProps = {
+                  addingMultipleValues: true,
+                  itemsPerPage: ROW_LIMIT,
+                  pushHistory: true,
+                  resetLimitParams: resetLimitOnApply,
+                  resetPage: resetPageOnApply,
+                };
+                if (query?.[MetaQueryEnum.LIMIT]) {
+                  filterQueryOptions.itemsPerPage = +query?.[MetaQueryEnum.LIMIT];
+                }
                 goToWithFilters(
                   query,
                   updatedQuery,
-                  {
-                    addingMultipleValues: true,
-                    pushHistory: true,
-                  });
+                  filterQueryOptions,
+                );
               }}
               secondary
             >
